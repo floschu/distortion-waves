@@ -1,0 +1,78 @@
+name: release
+
+# Pushing a tag such as v0.1.0 runs every check, publishes version 0.1.0 to
+# Maven Central and creates a GitHub release with generated notes. The
+# repository needs these secrets: SONATYPE_NEXUS_USERNAME and
+# SONATYPE_NEXUS_PASSWORD (a Central Portal user token), SIGNING_PRIVATE_KEY
+# (an ASCII-armoured GPG key) and SIGNING_PASSWORD.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+# The Gradle project lives in library/.
+defaults:
+  run:
+    working-directory: library
+
+jobs:
+  all_checks:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Checks all the things
+        run: >
+          ./gradlew
+          ktfmtCheck
+          :distortion-waves:lint
+          :distortion-waves:checkKotlinAbi
+          :distortion-waves:desktopTest
+          :distortion-waves:assemble
+          :sample:shared:desktopTest
+          :sample:androidApp:assembleRelease
+
+  publish:
+    needs: [all_checks]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Upload release
+        # The version on Maven Central is the tag without its v.
+        run: libraryVersionTag="${TAG#v}" ./gradlew :distortion-waves:publishAndReleaseToMavenCentral --no-configuration-cache
+        env:
+          TAG: ${{ github.ref_name }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPE_NEXUS_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+
+  github-release:
+    needs: [publish]
+    runs-on: ubuntu-latest
+    # No checkout here, so no library/ to run in.
+    defaults:
+      run:
+        working-directory: .
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+              --repo="${{ github.repository }}" \
+              --title="$TAG" \
+              --generate-notes

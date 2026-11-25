@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The Gradle project lives in library/.
+defaults:
+  run:
+    working-directory: library
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: ktfmt and Android lint
+        run: ./gradlew ktfmtCheck :distortion-waves:lint :sample:androidApp:lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Desktop render tests
+        run: ./gradlew :distortion-waves:desktopTest :sample:shared:desktopTest
+
+  # macOS, because the ABI dump compiles the iOS klibs.
+  api_validation:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Public API matches distortion-waves/api
+        run: ./gradlew :distortion-waves:checkKotlinAbi
+
+  assemble:
+    needs: [lint, test, api_validation]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: library/.java-version
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Library on Android, desktop and Wasm. api_validation builds iOS on macOS.
+        run: ./gradlew :distortion-waves:assemble
+      - name: Sample apps
+        run: ./gradlew :sample:androidApp:assembleRelease :sample:desktopApp:compileKotlin
