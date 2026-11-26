@@ -42,7 +42,9 @@ DistortionWave(
     overlay = {
         Button(
             onClick = { sent = !sent },
-            modifier = Modifier.align(alignment = Alignment.BottomCenter).distortionWaveSource(),
+            modifier = Modifier
+                .align(alignment = Alignment.BottomCenter)
+                .distortionWaveSource(),
         ) {
             Text(text = if (sent) "Done" else "Confirm")
         }

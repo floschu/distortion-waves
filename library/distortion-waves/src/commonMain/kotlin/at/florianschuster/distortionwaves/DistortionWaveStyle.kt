@@ -889,6 +889,10 @@ public class DistortionWavePalette(
                 behind = rgb(160, 165, 180),
             )
 
+        /** The built-in palettes, in the order a picker would show them. */
+        public val Presets: List<DistortionWavePalette> =
+            listOf(Colorful, Green, Ocean, Sunset, Mono)
+
         /** A single colour, lighter ahead of the front and deeper behind it. */
         public fun single(color: Color): DistortionWavePalette =
             DistortionWavePalette(

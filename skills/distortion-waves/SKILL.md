@@ -153,7 +153,7 @@ Times are seconds. Lengths are plain numbers in dp times `scale`. `cornerRadius`
 
 | Want | Change |
 | --- | --- |
-| Other colours | `palette`: `Colorful`, `Green`, `Ocean`, `Sunset`, `Mono`, `DistortionWavePalette.single(color)`, or your own with up to eight colours |
+| Other colours | `palette`: `Colorful`, `Green`, `Ocean`, `Sunset`, `Mono`, `DistortionWavePalette.single(color)`, or your own with up to eight colours. `DistortionWavePalette.Presets` lists the built-in ones |
 | Faster or slower | `speed` |
 | Calmer distortion | lower `lens.amplitude`, `blur.radius`, `lens.aberration` |
 | No colour split on white text | `lens.aberration = 0f` |

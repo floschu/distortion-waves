@@ -36,6 +36,7 @@ public final class at/florianschuster/distortionwaves/DistortionWavePalette$Comp
 	public final fun getGreen ()Lat/florianschuster/distortionwaves/DistortionWavePalette;
 	public final fun getMono ()Lat/florianschuster/distortionwaves/DistortionWavePalette;
 	public final fun getOcean ()Lat/florianschuster/distortionwaves/DistortionWavePalette;
+	public final fun getPresets ()Ljava/util/List;
 	public final fun getSunset ()Lat/florianschuster/distortionwaves/DistortionWavePalette;
 	public final fun single-8_81llA (J)Lat/florianschuster/distortionwaves/DistortionWavePalette;
 }

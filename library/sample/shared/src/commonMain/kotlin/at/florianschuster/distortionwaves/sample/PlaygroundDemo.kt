@@ -28,13 +28,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +45,9 @@ import at.florianschuster.distortionwaves.DistortionWavePalette
 import at.florianschuster.distortionwaves.DistortionWaveStyle
 import at.florianschuster.distortionwaves.DistortionWaveType
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** A palette, the dot that stands for it, and how to write it in code. */
 private class Look(
@@ -215,7 +217,7 @@ internal fun PlaygroundDemo() {
                     edges = it
                 }
             }
-            CodeCard(invocation(type, preset, style, Looks[look].code))
+            CodeCard(invocation(type, preset, style, Looks[look].code, revealed = after))
         }
 
         // The stage, on a frosted band the controls scroll behind. The band starts under the
@@ -258,12 +260,12 @@ private const val StageScale = 0.55f
 /** The code for the wave. A tap copies it. */
 @Composable
 private fun CodeCard(code: String) {
-    // The common clipboard API that takes plain text.
-    @Suppress("DEPRECATION") val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
-            delay(1500)
+            delay(1.5.seconds)
             copied = false
         }
     }
@@ -271,19 +273,22 @@ private fun CodeCard(code: String) {
         Modifier.fillMaxWidth()
             .card()
             .clickable {
-                clipboard.setText(AnnotatedString(code))
-                copied = true
+                scope.launch {
+                    clipboard.setClipEntry(plainTextClipEntry(code))
+                    copied = true
+                }
             }
-            .padding(Margin),
+            .padding(vertical = Margin),
         verticalArrangement = Arrangement.spacedBy(Gap),
     ) {
-        Row {
+        Row(Modifier.padding(horizontal = Margin)) {
             Txt("Code", Modifier.weight(1f), color = Dark.faint, size = 12)
             Txt(if (copied) "Copied" else "Tap to copy", color = Dark.faint, size = 12)
         }
         BasicText(
             code,
-            Modifier.horizontalScroll(rememberScrollState()),
+            // The margin scrolls with the code, so long lines run to the card's edge.
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Margin),
             style =
                 TextStyle(
                     color = Dark.ink,
@@ -312,14 +317,15 @@ private fun Stage(after: Boolean) {
 }
 
 /**
- * The call that draws the wave as the playground has it now. Only what differs from the type's
- * preset is written out.
+ * The call that draws the wave as the playground has it now, with the side the stage shows as
+ * `revealed`. Only what differs from the type's preset is written out.
  */
 private fun invocation(
     type: DistortionWaveType,
     preset: DistortionWaveStyle,
     style: DistortionWaveStyle,
     palette: String,
+    revealed: Boolean,
 ): String {
     fun Float.code() = "${(this * 100).roundToInt() / 100f}f"
     // A group is written as a copy of the preset's, with only its changed values.
@@ -370,11 +376,11 @@ private fun invocation(
             changes.forEach { append("    $it,\n") }
             append(")")
         }
-        append("\n\n")
+        appendLine()
         append(
             """
             DistortionWave(
-                revealed = revealed,
+                revealed = $revealed,
                 style = style,
                 revealedContent = { After() },
                 content = { Before() },

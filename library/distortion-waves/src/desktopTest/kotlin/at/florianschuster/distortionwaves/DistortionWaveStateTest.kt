@@ -20,7 +20,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -40,7 +39,6 @@ import kotlinx.coroutines.launch
  * The state's logic, on the crossfade the wave falls back to. It runs the same calls as the wave
  * and needs no shader, so these tests are quick.
  */
-@OptIn(ExperimentalTestApi::class)
 class DistortionWaveStateTest {
     @Test
     fun `reveal ends on the revealed side and collapse on the other`() = runComposeUiTest {
@@ -308,7 +306,6 @@ class DistortionWaveStateTest {
  * The side that is not on show is still composed, but nothing can reach it: no tap, no key and no
  * accessibility service.
  */
-@OptIn(ExperimentalTestApi::class)
 class DistortionWaveHiddenSideTest {
     @Test
     fun `a tap on the revealed side does not reach the content under it`() = runComposeUiTest {

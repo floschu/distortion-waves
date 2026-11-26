@@ -61,6 +61,8 @@ final class at.florianschuster.distortionwaves/DistortionWavePalette { // at.flo
             final fun <get-Mono>(): at.florianschuster.distortionwaves/DistortionWavePalette // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Mono.<get-Mono>|<get-Mono>(){}[0]
         final val Ocean // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Ocean|{}Ocean[0]
             final fun <get-Ocean>(): at.florianschuster.distortionwaves/DistortionWavePalette // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Ocean.<get-Ocean>|<get-Ocean>(){}[0]
+        final val Presets // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Presets|{}Presets[0]
+            final fun <get-Presets>(): kotlin.collections/List<at.florianschuster.distortionwaves/DistortionWavePalette> // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Presets.<get-Presets>|<get-Presets>(){}[0]
         final val Sunset // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Sunset|{}Sunset[0]
             final fun <get-Sunset>(): at.florianschuster.distortionwaves/DistortionWavePalette // at.florianschuster.distortionwaves/DistortionWavePalette.Companion.Sunset.<get-Sunset>|<get-Sunset>(){}[0]
 

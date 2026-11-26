@@ -42,6 +42,7 @@ import at.florianschuster.distortionwaves.DistortionWave
 import at.florianschuster.distortionwaves.DistortionWavePalette
 import at.florianschuster.distortionwaves.DistortionWaveStyle
 import at.florianschuster.distortionwaves.rememberDistortionWaveState
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -154,13 +155,13 @@ internal fun PaymentDemo() {
                     paid = false,
                     label = if (processing) "Processing…" else "Pay",
                     enabled = !processing,
-                    badge = Modifier.distortionWaveSource(),
+                    modifier = Modifier.distortionWaveSource(),
                 ) {
                     scope.launch {
                         // Mid-wave, both buttons turn the wave around.
                         if (state.isRunning) return@launch state.toggle()
                         processing = true
-                        delay(900)
+                        delay(1.seconds)
                         processing = false
                         state.reveal()
                     }
@@ -175,7 +176,7 @@ private fun Sheet(
     paid: Boolean,
     label: String,
     enabled: Boolean,
-    badge: Modifier = Modifier,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Column(
@@ -184,7 +185,7 @@ private fun Sheet(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(Gap))
-        Badge(if (paid) "✓" else "$", if (paid) Success else Color(0xFF2775CA), 64.dp, badge)
+        Badge(if (paid) "✓" else "$", if (paid) Success else Color(0xFF2775CA), 64.dp, modifier)
         Txt(if (paid) "Paid" else "Pay Northwind Coffee", color = Dark.faint)
         Txt("11.054 USDC", size = 36, weight = FontWeight.Medium)
         Txt("Oct 3, 2026 at 8:55 AM", color = Dark.faint, size = 15)

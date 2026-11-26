@@ -52,6 +52,8 @@ kotlin {
             api(libs.compose.ui)
         }
         named("desktopTest") {
+            // The Compose UI test entry points are experimental.
+            languageSettings.optIn("androidx.compose.ui.test.ExperimentalTestApi")
             dependencies {
                 implementation(kotlin("test"))
                 implementation(compose.desktop.currentOs)
