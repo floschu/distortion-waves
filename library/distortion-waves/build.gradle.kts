@@ -9,7 +9,11 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.vanniktech.maven.publish)
+    alias(libs.plugins.ktfmt)
 }
+
+// The Kotlin coding conventions, as kotlinlang.org writes them.
+ktfmt { kotlinLangStyle() }
 
 kotlin {
     explicitApi()
@@ -47,7 +51,7 @@ kotlin {
             api(libs.compose.foundation)
             api(libs.compose.ui)
         }
-        val desktopTest by getting {
+        named("desktopTest") {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(compose.desktop.currentOs)
