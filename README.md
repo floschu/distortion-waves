@@ -42,7 +42,7 @@ DistortionWave(
     overlay = {
         Button(
             onClick = { sent = !sent },
-            modifier = Modifier.align(alignment = Alignment.BottomCenter),
+            modifier = Modifier.align(alignment = Alignment.BottomCenter).distortionWaveSource(),
         ) {
             Text(text = if (sent) "Done" else "Confirm")
         }
@@ -54,7 +54,7 @@ DistortionWave(
 
 ## skills
 
-Check out the [distortion-waves skill](skills/distortion-waves) to implement `distortion-waves` with your **AI agents**.
+Check out the [distortion-waves skill](skills/distortion-waves) to implement `distortion-waves` with your **AI agents**. It also documents `DistortionWaveContent`, `DistortionWaveState`, styling and platform support.
 
 ## author
 

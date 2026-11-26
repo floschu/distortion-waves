@@ -1,14 +1,18 @@
 package at.florianschuster.distortionwaves.internal
 
+import android.database.ContentObserver
 import android.graphics.BlendMode
 import android.graphics.RenderEffect as AndroidRenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.ShaderBrush
@@ -103,14 +107,28 @@ private fun blurredCopy(
     )
 }
 
+/** Follows the animator duration scale, which "Remove animations" sets to zero. */
 @Composable
 internal actual fun systemReducedMotion(): Boolean {
-    val context = LocalContext.current
-    return remember(context) {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) == 0f
-    }
+    val resolver = LocalContext.current.contentResolver
+    fun read() =
+        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    val reduced by
+        produceState(read(), resolver) {
+            val observer =
+                object : ContentObserver(Handler(Looper.getMainLooper())) {
+                    override fun onChange(selfChange: Boolean) {
+                        value = read()
+                    }
+                }
+            resolver.registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
+                false,
+                observer,
+            )
+            // The setting may have changed between the first read and the observer.
+            value = read()
+            awaitDispose { resolver.unregisterContentObserver(observer) }
+        }
+    return reduced
 }

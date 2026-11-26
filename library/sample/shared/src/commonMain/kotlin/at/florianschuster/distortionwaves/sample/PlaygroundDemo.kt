@@ -28,7 +28,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,14 +40,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import at.florianschuster.distortionwaves.DistortionWave
+import at.florianschuster.distortionwaves.DistortionWaveContent
 import at.florianschuster.distortionwaves.DistortionWavePalette
 import at.florianschuster.distortionwaves.DistortionWaveStyle
 import at.florianschuster.distortionwaves.DistortionWaveType
-import at.florianschuster.distortionwaves.rememberDistortionWaveState
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** A palette, the dot that stands for it, and how to write it in code. */
 private class Look(
@@ -103,19 +100,18 @@ private val Looks =
 
 /**
  * Every type and palette on a small stage, with the knobs that change the look the most. The stage
- * stays in place while the controls scroll behind it, frosted where they show round the stage. Each
- * tap on the stage sends a new wave, from Before to After and back. A tap mid-wave turns the wave
- * around. With no source given, the wave opens from the edge its type starts at. A double tap on a
- * slider puts it back to the preset's value, and so does picking another type. Under the sliders is
- * the code for the wave as it is set now. A tap copies it.
+ * stays in place while the controls scroll behind it, frosted where they show round the stage. The
+ * stage is a `DistortionWaveContent` on a boolean: each tap sends a new wave, from Before to After
+ * and back. A tap mid-wave turns the wave around. With no source given, the wave opens from the
+ * edge its type starts at. A double tap on a slider puts it back to the preset's value, and so does
+ * picking another type. Under the sliders is the code for the wave as it is set now. A tap copies
+ * it.
  */
 @Composable
 internal fun PlaygroundDemo() {
-    val state = rememberDistortionWaveState()
-    val scope = rememberCoroutineScope()
     var type by remember { mutableStateOf(DistortionWaveType.Vertical) }
     var look by remember { mutableIntStateOf(0) }
-    var flipped by remember { mutableStateOf(false) }
+    var after by remember { mutableStateOf(false) }
     val preset =
         when (type) {
             DistortionWaveType.Vertical -> DistortionWaveStyle.Vertical
@@ -124,27 +120,25 @@ internal fun PlaygroundDemo() {
         }
     // The sliders start on the preset's values, and go back to them with a new type.
     var speed by remember(preset) { mutableFloatStateOf(preset.speed) }
-    var amplitude by remember(preset) { mutableFloatStateOf(preset.amplitude) }
-    var blur by remember(preset) { mutableFloatStateOf(preset.blur) }
-    var aberration by remember(preset) { mutableFloatStateOf(preset.aberration) }
-    var dots by remember(preset) { mutableFloatStateOf(preset.particleCount.toFloat()) }
-    var edges by remember(preset) { mutableFloatStateOf(preset.rimStrength) }
+    var amplitude by remember(preset) { mutableFloatStateOf(preset.lens.amplitude) }
+    var blur by remember(preset) { mutableFloatStateOf(preset.blur.radius) }
+    var aberration by remember(preset) { mutableFloatStateOf(preset.lens.aberration) }
+    var dots by remember(preset) { mutableFloatStateOf(preset.particles.count.toFloat()) }
+    var edges by remember(preset) { mutableFloatStateOf(preset.rim.opacity) }
 
-    // The presets are tuned for a phone screen (or a tall sheet): scaled down
-    // for the stage, with the stage's corners in the scaled points.
-    val scale = if (type == DistortionWaveType.Center) 0.8f else 0.55f
+    // The presets are tuned for a phone screen: scaled down for the stage.
     val style =
         preset.copy(
-            scale = scale,
-            cornerRadius = CardCorner / scale,
-            palette = Looks[look].palette,
-            amplitude = amplitude,
-            blur = blur,
-            aberration = aberration,
-            particleCount = dots.toInt(),
-            rimStrength = edges,
-            hairlineOpacity = if (edges > 0f) preset.hairlineOpacity else 0f,
+            scale = StageScale,
             speed = speed,
+            cornerRadius = CardCorner,
+            palette = Looks[look].palette,
+            lens = preset.lens.copy(amplitude = amplitude, aberration = aberration),
+            blur = preset.blur.copy(radius = blur),
+            particles = preset.particles.copy(count = dots.toInt()),
+            rim = preset.rim.copy(opacity = edges),
+            hairline =
+                preset.hairline.copy(opacity = if (edges > 0f) preset.hairline.opacity else 0f),
         )
 
     val controls = rememberGraphicsLayer()
@@ -183,13 +177,27 @@ internal fun PlaygroundDemo() {
                 PillSlider("Speed", speed, 0.4f..2.5f, preset.speed, Modifier.weight(1f)) {
                     speed = it
                 }
-                PillSlider("Swell", amplitude, 0f..80f, preset.amplitude, Modifier.weight(1f)) {
+                PillSlider(
+                    "Swell",
+                    amplitude,
+                    0f..80f,
+                    preset.lens.amplitude,
+                    Modifier.weight(1f),
+                ) {
                     amplitude = it
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Gap)) {
-                PillSlider("Blur", blur, 0f..40f, preset.blur, Modifier.weight(1f)) { blur = it }
-                PillSlider("Split", aberration, 0f..2f, preset.aberration, Modifier.weight(1f)) {
+                PillSlider("Blur", blur, 0f..40f, preset.blur.radius, Modifier.weight(1f)) {
+                    blur = it
+                }
+                PillSlider(
+                    "Split",
+                    aberration,
+                    0f..2f,
+                    preset.lens.aberration,
+                    Modifier.weight(1f),
+                ) {
                     aberration = it
                 }
             }
@@ -198,12 +206,12 @@ internal fun PlaygroundDemo() {
                     "Dots",
                     dots,
                     0f..200f,
-                    preset.particleCount.toFloat(),
+                    preset.particles.count.toFloat(),
                     Modifier.weight(1f),
                 ) {
                     dots = it
                 }
-                PillSlider("Edges", edges, 0f..1f, preset.rimStrength, Modifier.weight(1f)) {
+                PillSlider("Edges", edges, 0f..1f, preset.rim.opacity, Modifier.weight(1f)) {
                     edges = it
                 }
             }
@@ -223,35 +231,29 @@ internal fun PlaygroundDemo() {
                 )
                 .padding(start = Margin, end = Margin, top = TopBar, bottom = Gap),
         ) {
-            DistortionWave(
-                state = state,
+            // At rest, a tap sends a new wave to the other side. Mid-wave, it asks for the
+            // side on show again, which turns the wave around.
+            DistortionWaveContent(
+                targetState = after,
                 modifier =
                     Modifier.fillMaxWidth().height(StageHeight).card().clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
-                        scope.launch {
-                            // Mid-wave, a tap turns the wave around.
-                            if (state.isRunning) return@launch state.toggle()
-                            // At rest, every tap sends a new wave to the other side.
-                            if (state.progress == 1f) {
-                                flipped = !flipped
-                                state.snapTo(revealed = false)
-                            }
-                            state.reveal()
-                            flipped = !flipped
-                            state.snapTo(revealed = false)
-                        }
+                        after = !after
                     },
                 style = style,
-                revealedContent = { Stage(!flipped) },
-                content = { Stage(flipped) },
-            )
+            ) {
+                Stage(it)
+            }
         }
     }
 }
 
 private val StageHeight = 240.dp
+
+/** The stage against the phone screen the presets are tuned for. */
+private const val StageScale = 0.55f
 
 /** The code for the wave. A tap copies it. */
 @Composable
@@ -320,27 +322,51 @@ private fun invocation(
     palette: String,
 ): String {
     fun Float.code() = "${(this * 100).roundToInt() / 100f}f"
-    val changes = buildList {
-        if (style.scale != preset.scale) add("scale = ${style.scale.code()}")
-        if (style.speed != preset.speed) add("speed = ${style.speed.code()}")
-        if (style.cornerRadius != preset.cornerRadius)
-            add("cornerRadius = ${style.cornerRadius.code()}")
-        if (style.palette != preset.palette) add("palette = $palette")
-        if (style.amplitude != preset.amplitude) add("amplitude = ${style.amplitude.code()}")
-        if (style.blur != preset.blur) add("blur = ${style.blur.code()}")
-        if (style.aberration != preset.aberration) add("aberration = ${style.aberration.code()}")
-        if (style.particleCount != preset.particleCount)
-            add("particleCount = ${style.particleCount}")
-        if (style.rimStrength != preset.rimStrength)
-            add("rimStrength = ${style.rimStrength.code()}")
-        if (style.hairlineOpacity != preset.hairlineOpacity) {
-            add("hairlineOpacity = ${style.hairlineOpacity.code()}")
-        }
+    // A group is written as a copy of the preset's, with only its changed values.
+    fun group(
+        name: String,
+        vararg values: Pair<String, String?>,
+    ): String? {
+        val changed = values.filter { it.second != null }
+        if (changed.isEmpty()) return null
+        return "$name = preset.$name.copy(" +
+            changed.joinToString { "${it.first} = ${it.second}" } +
+            ")"
     }
+    fun changed(
+        now: Float,
+        before: Float,
+    ) = now.takeIf { it != before }?.code()
+    val changes =
+        listOfNotNull(
+            changed(style.scale, preset.scale)?.let { "scale = $it" },
+            changed(style.speed, preset.speed)?.let { "speed = $it" },
+            "cornerRadius = ${style.cornerRadius.value.roundToInt()}.dp"
+                .takeIf { style.cornerRadius != preset.cornerRadius },
+            "palette = $palette".takeIf { style.palette != preset.palette },
+            group(
+                "lens",
+                "amplitude" to changed(style.lens.amplitude, preset.lens.amplitude),
+                "aberration" to changed(style.lens.aberration, preset.lens.aberration),
+            ),
+            group("blur", "radius" to changed(style.blur.radius, preset.blur.radius)),
+            group(
+                "particles",
+                "count" to
+                    style.particles.count.takeIf { it != preset.particles.count }?.toString(),
+            ),
+            group("rim", "opacity" to changed(style.rim.opacity, preset.rim.opacity)),
+            group(
+                "hairline",
+                "opacity" to changed(style.hairline.opacity, preset.hairline.opacity),
+            ),
+        )
     return buildString {
-        append("val style = DistortionWaveStyle.${type.name}")
-        if (changes.isNotEmpty()) {
-            append(".copy(\n")
+        if (changes.isEmpty()) {
+            append("val style = DistortionWaveStyle.${type.name}")
+        } else {
+            append("val preset = DistortionWaveStyle.${type.name}\n")
+            append("val style = preset.copy(\n")
             changes.forEach { append("    $it,\n") }
             append(")")
         }

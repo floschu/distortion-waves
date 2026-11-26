@@ -1,7 +1,6 @@
 package at.florianschuster.distortionwaves.internal
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import at.florianschuster.distortionwaves.DistortionWaveStyle
 import kotlin.math.PI
 import kotlin.math.cos
@@ -53,12 +52,12 @@ internal class WaveParticle(
     private val hop: Float
     private val hopOffset: Float
 
-    private val reach = style.particleReach
-    private val flight = style.particleFlight
-    private val gap = style.particleGap
-    private val anticipation = style.anticipation
-    private val gatherDots = style.gatherDots
-    private val spread = style.particleSpread.coerceIn(0f, 1f)
+    private val reach = style.particles.reach
+    private val flight = style.particles.flight
+    private val gap = style.particles.gap
+    private val anticipation = style.anticipation.duration
+    private val gatherDots = style.anticipation.dots
+    private val spread = style.particles.spread.coerceIn(0f, 1f)
 
     init {
         // Low-discrepancy sequences: evenly scattered, the same on every run.
@@ -72,9 +71,9 @@ internal class WaveParticle(
         swayRate = 2.5f + 3.5f * scatter(0.7320508076)
         twinkleRate = 8f + 12f * scatter(0.2360679775)
         phase = scatter(0.6180339887) * 2f * PI.toFloat()
-        life = style.particleLife * (0.4f + 0.6f * scatter(0.6457513111))
+        life = style.particles.life * (0.4f + 0.6f * scatter(0.6457513111))
         val small = scatter(0.5497004779)
-        size = style.particleSize * (0.55f + 0.45f * small * small)
+        size = style.particles.size * (0.55f + 0.45f * small * small)
         brightness = 0.3f + 0.7f * scatter(0.6055512755)
         hop = 0.16f + 0.14f * scatter(0.1231056256)
         hopOffset = scatter(0.4721359550)
@@ -113,16 +112,17 @@ internal class WaveParticle(
 
     /** In the source's own frame: `along` its long side, `out` the way the wave will travel. */
     private fun onSource(
-        source: Rect,
-        sideways: Boolean,
+        front: WaveFront,
         along: Float,
         out: Float,
-    ): Offset =
-        if (sideways) {
-            Offset(source.center.x + out, source.center.y + along)
-        } else {
-            Offset(source.center.x + along, source.center.y - out)
+    ): Offset {
+        val source = front.source
+        return when {
+            !front.sideways -> Offset(source.center.x + along, source.center.y - out)
+            front.mirrored -> Offset(source.center.x - out, source.center.y + along)
+            else -> Offset(source.center.x + out, source.center.y + along)
         }
+    }
 
     private fun inflow(front: WaveFront): Offset {
         val source = front.source
@@ -134,11 +134,10 @@ internal class WaveParticle(
         val x = (hash(index, count, 1.0) * 2f - 1f) * (half + 24f)
         val nearest = gap + flight
         val away = nearest + max(reach - nearest, 0f) * hash(index, count, 2.0)
-        val start = onSource(source, front.sideways, x, face + away)
+        val start = onSource(front, x, face + away)
         // Flying for the nearest point of the source's face, faster and faster.
         val corner = min(source.width, source.height) / 2f
-        val target =
-            onSource(source, front.sideways, min(max(x, -half + corner), half - corner), face)
+        val target = onSource(front, min(max(x, -half + corner), half - corner), face)
         val d = target - start
         val length = max(hypot(d.x, d.y), 1f)
         return start + d / length * (flight * along * along)

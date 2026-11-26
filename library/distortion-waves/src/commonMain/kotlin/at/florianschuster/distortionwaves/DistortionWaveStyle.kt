@@ -5,19 +5,21 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlin.math.cbrt
 import kotlin.math.pow
 
-/** Whether the wave gives way to a plain crossfade. */
-public enum class ReducedMotion {
-    /** A crossfade when the system asks for less motion. */
+/** How much a distortion wave moves. */
+public enum class DistortionWaveMotion {
+    /** The wave, or a plain crossfade when the system asks for less motion. */
     System,
 
-    /** Always a crossfade. */
-    Always,
+    /** Always a plain crossfade. */
+    Reduced,
 
     /** Always the wave, where the platform can draw it. */
-    Never,
+    Full,
 }
 
 /** Which way a distortion wave travels. */
@@ -25,7 +27,10 @@ public enum class DistortionWaveType {
     /** Bottom to top, from a wide source such as a button. Leans with the touch. */
     Vertical,
 
-    /** Left to right, from a tall source such as an edge or a side tab. */
+    /**
+     * From the start edge across, from a tall source such as an edge or a side tab: left to right,
+     * or right to left in a right-to-left layout. Leans with the touch.
+     */
     Horizontal,
 
     /** A ring spreading from the centre of a round source, which stays sharp. */
@@ -33,109 +38,63 @@ public enum class DistortionWaveType {
 }
 
 /**
- * How a distortion wave looks and moves. Times are in seconds at [speed] 1. Lengths are in dp,
- * multiplied by [scale]. The defaults are tuned for a full phone screen. Start from a preset and
- * change what you need with [copy].
+ * How a distortion wave looks and moves. Start from a preset and change what you need with [copy].
+ * The parts of the wave each have their own group: [anticipation], [lens], [blur], [band], [rim],
+ * [hairline] and [particles].
+ *
+ * Times are in seconds at [speed] 1. Lengths are plain numbers in dp, multiplied by [scale]. The
+ * defaults are tuned for a full phone screen.
+ *
+ * ```
+ * val preset = DistortionWaveStyle.Vertical
+ * val style = preset.copy(speed = 1.5f, lens = preset.lens.copy(aberration = 0f))
+ * ```
  */
 @Immutable
 public class DistortionWaveStyle(
     /** Which way the wave travels. */
     public val type: DistortionWaveType = DistortionWaveType.Vertical,
     /**
-     * Multiplies every length, for a wave that fills something much smaller or larger than a phone
-     * screen.
+     * Multiplies every length of the wave, for one that fills something much smaller or larger than
+     * a phone screen. [cornerRadius] is not scaled.
      */
     public val scale: Float = 1f,
     /**
-     * How fast the wave plays: 2 is twice as quick, 0.5 half as quick. The times below are for
-     * speed 1.
+     * How fast the wave plays: 2 is twice as quick, 0.5 half as quick. The times are for speed 1.
      */
     public val speed: Float = 1f,
-    /** Seconds everything is pulled toward the source before the wave leaves it. */
-    public val anticipation: Float = 0.5f,
-    /** Seconds from the wave leaving the source to its front having settled. */
-    public val travel: Float = 2.28f,
-    /** How far out from the source's outline the front starts. */
-    public val launchGap: Float = 0f,
-    /** Seconds after the launch that the colour on the edges starts to be wiped away. */
-    public val linger: Float = -0.35f,
-    /** Seconds the colour on the edges takes to be wiped away. */
-    public val rimFade: Float = 3.03f,
-    /** How the colour on the edges is wiped away over [rimFade]. */
-    public val rimEasing: Easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f),
     /** How much faster the wave collapses back than it opened. */
     public val returnSpeed: Float = 1.45f,
+    /** Seconds from the wave leaving the source to its front having settled. */
+    public val travel: Float = 2.28f,
     /** How the front covers its way over [travel]: full speed off the source, a soft landing. */
-    public val easing: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f),
-    /** How far the anticipation pulls content toward the source. */
-    public val pull: Float = 24f,
-    /** How far out the ring of colour that falls onto the source starts. */
-    public val inhale: Float = 56f,
-    /** How strong the colour is through the anticipation, 0–2. */
-    public val gatherGlow: Float = 0.33f,
-    /** How visible the dots hopping toward the source in the anticipation are, 0–1. */
-    public val gatherDots: Float = 1f,
-    /** How far the swell lifts content as it passes. */
-    public val amplitude: Float = 34f,
-    /** Width of the swell. */
-    public val lensWidth: Float = 150f,
-    /** How far red and blue part, as a share of how far the content has moved. */
-    public val aberration: Float = 0.78f,
-    /** How far the front bends along its length. */
-    public val swell: Float = 22f,
-    /** Blur on the front. */
-    public val blur: Float = 18f,
-    /** Distance ahead of the front over which the blur gathers. */
-    public val blurAhead: Float = 90f,
-    /** Distance behind the front over which the blur clears. */
-    public val blurBehind: Float = 240f,
-    /** Distance the colour feathers out ahead of the front. */
-    public val lead: Float = 130f,
-    /** Length of the colour trailing behind the front. */
-    public val tail: Float = 300f,
-    /** Peak opacity of the colour, 0–1. */
-    public val strength: Float = 0.92f,
-    /** How far in from the edges the colour reaches. */
-    public val rimWidth: Float = 14f,
-    /** How unequal the colour's thickness is along the edges, 0–2. */
-    public val rimUnevenness: Float = 1f,
-    /** Opacity of the colour on the edges, 0–1. 0 leaves none. */
-    public val rimStrength: Float = 0.82f,
-    /** How softly the colour is wiped away. */
-    public val rimSoftness: Float = 343f,
-    /** The corner radius of whatever the wave fills, which the colour on the edges follows. */
-    public val cornerRadius: Float = 0f,
-    /** How alive the colour on the edges is, 0–1. */
-    public val rimPulse: Float = 0.6f,
-    /** Width of a hairline right on the edge. 0 draws none. */
-    public val hairlineWidth: Float = 1.5f,
-    /** Opacity of the hairline, 0–1. */
-    public val hairlineOpacity: Float = 0.9f,
-    /** How far the hairline whitens where the pulse's light runs, 0–1. */
-    public val hairlineWhite: Float = 0.95f,
-    /** Seconds the hairline holds on after the colour on the edges starts to go. */
-    public val hairlineLinger: Float = 0.47f,
-    /** Seconds the hairline takes to be wiped away. */
-    public val hairlineFade: Float = 3f,
+    public val travelEasing: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f),
+    /** How far out from the source's outline the front starts. */
+    public val launchGap: Float = 0f,
     /**
      * How much the wave leans toward where the source was touched, 0–1. 0 always sends it straight
      * out. A [DistortionWaveType.Center] wave never leans.
      */
-    public val orientation: Float = 0.5f,
-    /** How many dots the wave carries. 0 draws none. */
-    public val particleCount: Int = 64,
-    /** Diameter of the largest dot. */
-    public val particleSize: Float = 1.8f,
-    /** How far from the source the farthest dot is born in the anticipation. */
-    public val particleReach: Float = 150f,
-    /** How far each dot flies toward the source in one hop. */
-    public val particleFlight: Float = 30f,
-    /** How close to the source a dot comes before it has faded. */
-    public val particleGap: Float = 24f,
-    /** Seconds after the launch by which the last dot has faded out. */
-    public val particleLife: Float = 2.19f,
-    /** How far the dots are thrown, as a share of the front's way, 0–1. */
-    public val particleSpread: Float = 1f,
+    public val lean: Float = 0.5f,
+    /**
+     * The corner radius of whatever the wave fills, which the colour on the edges follows. In plain
+     * dp, whatever the [scale].
+     */
+    public val cornerRadius: Dp = 0.dp,
+    /** The wind-up before the wave leaves. */
+    public val anticipation: Anticipation = Anticipation(),
+    /** The distortion on the front. */
+    public val lens: Lens = Lens(),
+    /** The blur on the front. */
+    public val blur: Blur = Blur(),
+    /** The colour riding on the front. */
+    public val band: Band = Band(),
+    /** The colour left on the edges. */
+    public val rim: Rim = Rim(),
+    /** The thin line right on the edge. */
+    public val hairline: Hairline = Hairline(),
+    /** The dots the wave carries. */
+    public val particles: Particles = Particles(),
     /** The wave's colours. */
     public val palette: DistortionWavePalette = DistortionWavePalette.Colorful,
 ) {
@@ -144,8 +103,7 @@ public class DistortionWaveStyle(
         require(speed > 0f) { "speed must be above zero, was $speed." }
         require(returnSpeed > 0f) { "returnSpeed must be above zero, was $returnSpeed." }
         require(travel > 0f) { "travel must be above zero, was $travel." }
-        require(anticipation >= 0f) { "anticipation must not be negative, was $anticipation." }
-        require(particleCount >= 0) { "particleCount must not be negative, was $particleCount." }
+        require(cornerRadius >= 0.dp) { "cornerRadius must not be negative, was $cornerRadius." }
     }
 
     /**
@@ -153,111 +111,59 @@ public class DistortionWaveStyle(
      */
     internal val timeline: Float
         get() =
-            anticipation +
+            anticipation.duration +
                 maxOf(
                     travel * 0.6f,
-                    linger + rimFade,
-                    linger + hairlineLinger + hairlineFade,
-                    particleLife,
+                    rim.delay + rim.fade,
+                    rim.delay + hairline.delay + hairline.fade,
+                    particles.life,
                 )
 
-    /** Seconds for the whole of it at [speed]: swell settled, edges cleared, last dot faded. */
+    /** Seconds for the whole of it at [speed]: front settled, edges cleared, last dot faded. */
     public val duration: Float
         get() = timeline / speed
+
+    /** [cornerRadius] in the wave's own points, which the shaders work in. */
+    internal val cornerRadiusPoints: Float
+        get() = cornerRadius.value / scale
 
     /** A copy with the given values changed. */
     public fun copy(
         type: DistortionWaveType = this.type,
         scale: Float = this.scale,
         speed: Float = this.speed,
-        anticipation: Float = this.anticipation,
-        travel: Float = this.travel,
-        launchGap: Float = this.launchGap,
-        linger: Float = this.linger,
-        rimFade: Float = this.rimFade,
-        rimEasing: Easing = this.rimEasing,
         returnSpeed: Float = this.returnSpeed,
-        easing: Easing = this.easing,
-        pull: Float = this.pull,
-        inhale: Float = this.inhale,
-        gatherGlow: Float = this.gatherGlow,
-        gatherDots: Float = this.gatherDots,
-        amplitude: Float = this.amplitude,
-        lensWidth: Float = this.lensWidth,
-        aberration: Float = this.aberration,
-        swell: Float = this.swell,
-        blur: Float = this.blur,
-        blurAhead: Float = this.blurAhead,
-        blurBehind: Float = this.blurBehind,
-        lead: Float = this.lead,
-        tail: Float = this.tail,
-        strength: Float = this.strength,
-        rimWidth: Float = this.rimWidth,
-        rimUnevenness: Float = this.rimUnevenness,
-        rimStrength: Float = this.rimStrength,
-        rimSoftness: Float = this.rimSoftness,
-        cornerRadius: Float = this.cornerRadius,
-        rimPulse: Float = this.rimPulse,
-        hairlineWidth: Float = this.hairlineWidth,
-        hairlineOpacity: Float = this.hairlineOpacity,
-        hairlineWhite: Float = this.hairlineWhite,
-        hairlineLinger: Float = this.hairlineLinger,
-        hairlineFade: Float = this.hairlineFade,
-        orientation: Float = this.orientation,
-        particleCount: Int = this.particleCount,
-        particleSize: Float = this.particleSize,
-        particleReach: Float = this.particleReach,
-        particleFlight: Float = this.particleFlight,
-        particleGap: Float = this.particleGap,
-        particleLife: Float = this.particleLife,
-        particleSpread: Float = this.particleSpread,
+        travel: Float = this.travel,
+        travelEasing: Easing = this.travelEasing,
+        launchGap: Float = this.launchGap,
+        lean: Float = this.lean,
+        cornerRadius: Dp = this.cornerRadius,
+        anticipation: Anticipation = this.anticipation,
+        lens: Lens = this.lens,
+        blur: Blur = this.blur,
+        band: Band = this.band,
+        rim: Rim = this.rim,
+        hairline: Hairline = this.hairline,
+        particles: Particles = this.particles,
         palette: DistortionWavePalette = this.palette,
     ): DistortionWaveStyle =
         DistortionWaveStyle(
             type = type,
             scale = scale,
             speed = speed,
-            anticipation = anticipation,
-            travel = travel,
-            launchGap = launchGap,
-            linger = linger,
-            rimFade = rimFade,
-            rimEasing = rimEasing,
             returnSpeed = returnSpeed,
-            easing = easing,
-            pull = pull,
-            inhale = inhale,
-            gatherGlow = gatherGlow,
-            gatherDots = gatherDots,
-            amplitude = amplitude,
-            lensWidth = lensWidth,
-            aberration = aberration,
-            swell = swell,
-            blur = blur,
-            blurAhead = blurAhead,
-            blurBehind = blurBehind,
-            lead = lead,
-            tail = tail,
-            strength = strength,
-            rimWidth = rimWidth,
-            rimUnevenness = rimUnevenness,
-            rimStrength = rimStrength,
-            rimSoftness = rimSoftness,
+            travel = travel,
+            travelEasing = travelEasing,
+            launchGap = launchGap,
+            lean = lean,
             cornerRadius = cornerRadius,
-            rimPulse = rimPulse,
-            hairlineWidth = hairlineWidth,
-            hairlineOpacity = hairlineOpacity,
-            hairlineWhite = hairlineWhite,
-            hairlineLinger = hairlineLinger,
-            hairlineFade = hairlineFade,
-            orientation = orientation,
-            particleCount = particleCount,
-            particleSize = particleSize,
-            particleReach = particleReach,
-            particleFlight = particleFlight,
-            particleGap = particleGap,
-            particleLife = particleLife,
-            particleSpread = particleSpread,
+            anticipation = anticipation,
+            lens = lens,
+            blur = blur,
+            band = band,
+            rim = rim,
+            hairline = hairline,
+            particles = particles,
             palette = palette,
         )
 
@@ -267,47 +173,19 @@ public class DistortionWaveStyle(
         return type == other.type &&
             scale == other.scale &&
             speed == other.speed &&
-            anticipation == other.anticipation &&
-            travel == other.travel &&
-            launchGap == other.launchGap &&
-            linger == other.linger &&
-            rimFade == other.rimFade &&
-            rimEasing == other.rimEasing &&
             returnSpeed == other.returnSpeed &&
-            easing == other.easing &&
-            pull == other.pull &&
-            inhale == other.inhale &&
-            gatherGlow == other.gatherGlow &&
-            gatherDots == other.gatherDots &&
-            amplitude == other.amplitude &&
-            lensWidth == other.lensWidth &&
-            aberration == other.aberration &&
-            swell == other.swell &&
-            blur == other.blur &&
-            blurAhead == other.blurAhead &&
-            blurBehind == other.blurBehind &&
-            lead == other.lead &&
-            tail == other.tail &&
-            strength == other.strength &&
-            rimWidth == other.rimWidth &&
-            rimUnevenness == other.rimUnevenness &&
-            rimStrength == other.rimStrength &&
-            rimSoftness == other.rimSoftness &&
+            travel == other.travel &&
+            travelEasing == other.travelEasing &&
+            launchGap == other.launchGap &&
+            lean == other.lean &&
             cornerRadius == other.cornerRadius &&
-            rimPulse == other.rimPulse &&
-            hairlineWidth == other.hairlineWidth &&
-            hairlineOpacity == other.hairlineOpacity &&
-            hairlineWhite == other.hairlineWhite &&
-            hairlineLinger == other.hairlineLinger &&
-            hairlineFade == other.hairlineFade &&
-            orientation == other.orientation &&
-            particleCount == other.particleCount &&
-            particleSize == other.particleSize &&
-            particleReach == other.particleReach &&
-            particleFlight == other.particleFlight &&
-            particleGap == other.particleGap &&
-            particleLife == other.particleLife &&
-            particleSpread == other.particleSpread &&
+            anticipation == other.anticipation &&
+            lens == other.lens &&
+            blur == other.blur &&
+            band == other.band &&
+            rim == other.rim &&
+            hairline == other.hairline &&
+            particles == other.particles &&
             palette == other.palette
     }
 
@@ -315,143 +193,547 @@ public class DistortionWaveStyle(
         var result = type.hashCode()
         result = 31 * result + scale.hashCode()
         result = 31 * result + speed.hashCode()
-        result = 31 * result + anticipation.hashCode()
-        result = 31 * result + travel.hashCode()
-        result = 31 * result + launchGap.hashCode()
-        result = 31 * result + linger.hashCode()
-        result = 31 * result + rimFade.hashCode()
-        result = 31 * result + rimEasing.hashCode()
         result = 31 * result + returnSpeed.hashCode()
-        result = 31 * result + easing.hashCode()
-        result = 31 * result + pull.hashCode()
-        result = 31 * result + inhale.hashCode()
-        result = 31 * result + gatherGlow.hashCode()
-        result = 31 * result + gatherDots.hashCode()
-        result = 31 * result + amplitude.hashCode()
-        result = 31 * result + lensWidth.hashCode()
-        result = 31 * result + aberration.hashCode()
-        result = 31 * result + swell.hashCode()
-        result = 31 * result + blur.hashCode()
-        result = 31 * result + blurAhead.hashCode()
-        result = 31 * result + blurBehind.hashCode()
-        result = 31 * result + lead.hashCode()
-        result = 31 * result + tail.hashCode()
-        result = 31 * result + strength.hashCode()
-        result = 31 * result + rimWidth.hashCode()
-        result = 31 * result + rimUnevenness.hashCode()
-        result = 31 * result + rimStrength.hashCode()
-        result = 31 * result + rimSoftness.hashCode()
+        result = 31 * result + travel.hashCode()
+        result = 31 * result + travelEasing.hashCode()
+        result = 31 * result + launchGap.hashCode()
+        result = 31 * result + lean.hashCode()
         result = 31 * result + cornerRadius.hashCode()
-        result = 31 * result + rimPulse.hashCode()
-        result = 31 * result + hairlineWidth.hashCode()
-        result = 31 * result + hairlineOpacity.hashCode()
-        result = 31 * result + hairlineWhite.hashCode()
-        result = 31 * result + hairlineLinger.hashCode()
-        result = 31 * result + hairlineFade.hashCode()
-        result = 31 * result + orientation.hashCode()
-        result = 31 * result + particleCount.hashCode()
-        result = 31 * result + particleSize.hashCode()
-        result = 31 * result + particleReach.hashCode()
-        result = 31 * result + particleFlight.hashCode()
-        result = 31 * result + particleGap.hashCode()
-        result = 31 * result + particleLife.hashCode()
-        result = 31 * result + particleSpread.hashCode()
+        result = 31 * result + anticipation.hashCode()
+        result = 31 * result + lens.hashCode()
+        result = 31 * result + blur.hashCode()
+        result = 31 * result + band.hashCode()
+        result = 31 * result + rim.hashCode()
+        result = 31 * result + hairline.hashCode()
+        result = 31 * result + particles.hashCode()
         result = 31 * result + palette.hashCode()
         return result
     }
 
     override fun toString(): String =
         "DistortionWaveStyle(" +
-            "type=$type, " +
-            "scale=$scale, " +
-            "speed=$speed, " +
-            "anticipation=$anticipation, " +
-            "travel=$travel, " +
-            "launchGap=$launchGap, " +
-            "linger=$linger, " +
-            "rimFade=$rimFade, " +
-            "rimEasing=$rimEasing, " +
-            "returnSpeed=$returnSpeed, " +
-            "easing=$easing, " +
-            "pull=$pull, " +
-            "inhale=$inhale, " +
-            "gatherGlow=$gatherGlow, " +
-            "gatherDots=$gatherDots, " +
-            "amplitude=$amplitude, " +
-            "lensWidth=$lensWidth, " +
-            "aberration=$aberration, " +
-            "swell=$swell, " +
-            "blur=$blur, " +
-            "blurAhead=$blurAhead, " +
-            "blurBehind=$blurBehind, " +
-            "lead=$lead, " +
-            "tail=$tail, " +
-            "strength=$strength, " +
-            "rimWidth=$rimWidth, " +
-            "rimUnevenness=$rimUnevenness, " +
-            "rimStrength=$rimStrength, " +
-            "rimSoftness=$rimSoftness, " +
-            "cornerRadius=$cornerRadius, " +
-            "rimPulse=$rimPulse, " +
-            "hairlineWidth=$hairlineWidth, " +
-            "hairlineOpacity=$hairlineOpacity, " +
-            "hairlineWhite=$hairlineWhite, " +
-            "hairlineLinger=$hairlineLinger, " +
-            "hairlineFade=$hairlineFade, " +
-            "orientation=$orientation, " +
-            "particleCount=$particleCount, " +
-            "particleSize=$particleSize, " +
-            "particleReach=$particleReach, " +
-            "particleFlight=$particleFlight, " +
-            "particleGap=$particleGap, " +
-            "particleLife=$particleLife, " +
-            "particleSpread=$particleSpread, " +
+            "type=$type" +
+            ", " +
+            "scale=$scale" +
+            ", " +
+            "speed=$speed" +
+            ", " +
+            "returnSpeed=$returnSpeed" +
+            ", " +
+            "travel=$travel" +
+            ", " +
+            "travelEasing=$travelEasing" +
+            ", " +
+            "launchGap=$launchGap" +
+            ", " +
+            "lean=$lean" +
+            ", " +
+            "cornerRadius=$cornerRadius" +
+            ", " +
+            "anticipation=$anticipation" +
+            ", " +
+            "lens=$lens" +
+            ", " +
+            "blur=$blur" +
+            ", " +
+            "band=$band" +
+            ", " +
+            "rim=$rim" +
+            ", " +
+            "hairline=$hairline" +
+            ", " +
+            "particles=$particles" +
+            ", " +
             "palette=$palette" +
             ")"
+
+    /** The wind-up before the wave leaves: everything is pulled toward the source. */
+    @Immutable
+    public class Anticipation(
+        /**
+         * Seconds everything is pulled toward the source before the wave leaves it. 0 skips the
+         * wind-up.
+         */
+        public val duration: Float = 0.5f,
+        /** How far content is pulled toward the source. */
+        public val pull: Float = 24f,
+        /** How far out the ring of colour that falls onto the source starts. */
+        public val inhale: Float = 56f,
+        /** How strong the colour is through the wind-up, 0–2. */
+        public val glow: Float = 0.33f,
+        /** How visible the dots hopping toward the source are, 0–1. */
+        public val dots: Float = 1f,
+    ) {
+        init {
+            require(duration >= 0f) { "duration must not be negative, was $duration." }
+        }
+
+        /** A copy with the given values changed. */
+        public fun copy(
+            duration: Float = this.duration,
+            pull: Float = this.pull,
+            inhale: Float = this.inhale,
+            glow: Float = this.glow,
+            dots: Float = this.dots,
+        ): Anticipation =
+            Anticipation(
+                duration = duration,
+                pull = pull,
+                inhale = inhale,
+                glow = glow,
+                dots = dots,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Anticipation) return false
+            return duration == other.duration &&
+                pull == other.pull &&
+                inhale == other.inhale &&
+                glow == other.glow &&
+                dots == other.dots
+        }
+
+        override fun hashCode(): Int {
+            var result = duration.hashCode()
+            result = 31 * result + pull.hashCode()
+            result = 31 * result + inhale.hashCode()
+            result = 31 * result + glow.hashCode()
+            result = 31 * result + dots.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Anticipation(" +
+                "duration=$duration" +
+                ", " +
+                "pull=$pull" +
+                ", " +
+                "inhale=$inhale" +
+                ", " +
+                "glow=$glow" +
+                ", " +
+                "dots=$dots" +
+                ")"
+    }
+
+    /** The distortion on the front: content lifts once as the front passes and settles back. */
+    @Immutable
+    public class Lens(
+        /** How far the lens lifts content as it passes. */
+        public val amplitude: Float = 34f,
+        /** Width of the lens across the front. */
+        public val width: Float = 150f,
+        /**
+         * How far red and blue part, as a share of how far the content has moved. 0 keeps colours
+         * together.
+         */
+        public val aberration: Float = 0.78f,
+        /** How far the front wobbles from a clean arc along its length. */
+        public val bend: Float = 22f,
+    ) {
+        /** A copy with the given values changed. */
+        public fun copy(
+            amplitude: Float = this.amplitude,
+            width: Float = this.width,
+            aberration: Float = this.aberration,
+            bend: Float = this.bend,
+        ): Lens =
+            Lens(
+                amplitude = amplitude,
+                width = width,
+                aberration = aberration,
+                bend = bend,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Lens) return false
+            return amplitude == other.amplitude &&
+                width == other.width &&
+                aberration == other.aberration &&
+                bend == other.bend
+        }
+
+        override fun hashCode(): Int {
+            var result = amplitude.hashCode()
+            result = 31 * result + width.hashCode()
+            result = 31 * result + aberration.hashCode()
+            result = 31 * result + bend.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Lens(" +
+                "amplitude=$amplitude" +
+                ", " +
+                "width=$width" +
+                ", " +
+                "aberration=$aberration" +
+                ", " +
+                "bend=$bend" +
+                ")"
+    }
+
+    /** The blur that peaks on the front. */
+    @Immutable
+    public class Blur(
+        /** The most blur, right on the front. 0 keeps everything sharp. */
+        public val radius: Float = 18f,
+        /** Distance ahead of the front over which the blur gathers. */
+        public val ahead: Float = 90f,
+        /** Distance behind the front over which the blur clears. */
+        public val behind: Float = 240f,
+    ) {
+        /** A copy with the given values changed. */
+        public fun copy(
+            radius: Float = this.radius,
+            ahead: Float = this.ahead,
+            behind: Float = this.behind,
+        ): Blur =
+            Blur(
+                radius = radius,
+                ahead = ahead,
+                behind = behind,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Blur) return false
+            return radius == other.radius && ahead == other.ahead && behind == other.behind
+        }
+
+        override fun hashCode(): Int {
+            var result = radius.hashCode()
+            result = 31 * result + ahead.hashCode()
+            result = 31 * result + behind.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Blur(" + "radius=$radius" + ", " + "ahead=$ahead" + ", " + "behind=$behind" + ")"
+    }
+
+    /** The colour riding on the front. */
+    @Immutable
+    public class Band(
+        /** Distance the colour feathers out ahead of the front. */
+        public val lead: Float = 130f,
+        /** Length of the colour trailing behind the front. */
+        public val tail: Float = 300f,
+        /** Peak opacity of the colour, 0–1. 0 draws none. */
+        public val opacity: Float = 0.92f,
+    ) {
+        /** A copy with the given values changed. */
+        public fun copy(
+            lead: Float = this.lead,
+            tail: Float = this.tail,
+            opacity: Float = this.opacity,
+        ): Band =
+            Band(
+                lead = lead,
+                tail = tail,
+                opacity = opacity,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Band) return false
+            return lead == other.lead && tail == other.tail && opacity == other.opacity
+        }
+
+        override fun hashCode(): Int {
+            var result = lead.hashCode()
+            result = 31 * result + tail.hashCode()
+            result = 31 * result + opacity.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Band(" + "lead=$lead" + ", " + "tail=$tail" + ", " + "opacity=$opacity" + ")"
+    }
+
+    /** The colour the wave leaves on the edges, until a second, later front wipes it away. */
+    @Immutable
+    public class Rim(
+        /** How far in from the edges the colour reaches. */
+        public val width: Float = 14f,
+        /** Opacity of the colour on the edges, 0–1. 0 leaves none. */
+        public val opacity: Float = 0.82f,
+        /** How unequal the colour's thickness is along the edges, 0–2. */
+        public val unevenness: Float = 1f,
+        /** How softly the colour is wiped away. */
+        public val softness: Float = 343f,
+        /** How alive the colour on the edges is, 0–1. */
+        public val pulse: Float = 0.6f,
+        /**
+         * Seconds from the launch until the wipe starts. Below zero, the wipe is already that far
+         * along at the launch, so the colour goes sooner.
+         */
+        public val delay: Float = -0.35f,
+        /** Seconds the wipe takes. */
+        public val fade: Float = 3.03f,
+        /** How the wipe covers its way over [fade]. */
+        public val easing: Easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f),
+    ) {
+        /** A copy with the given values changed. */
+        public fun copy(
+            width: Float = this.width,
+            opacity: Float = this.opacity,
+            unevenness: Float = this.unevenness,
+            softness: Float = this.softness,
+            pulse: Float = this.pulse,
+            delay: Float = this.delay,
+            fade: Float = this.fade,
+            easing: Easing = this.easing,
+        ): Rim =
+            Rim(
+                width = width,
+                opacity = opacity,
+                unevenness = unevenness,
+                softness = softness,
+                pulse = pulse,
+                delay = delay,
+                fade = fade,
+                easing = easing,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Rim) return false
+            return width == other.width &&
+                opacity == other.opacity &&
+                unevenness == other.unevenness &&
+                softness == other.softness &&
+                pulse == other.pulse &&
+                delay == other.delay &&
+                fade == other.fade &&
+                easing == other.easing
+        }
+
+        override fun hashCode(): Int {
+            var result = width.hashCode()
+            result = 31 * result + opacity.hashCode()
+            result = 31 * result + unevenness.hashCode()
+            result = 31 * result + softness.hashCode()
+            result = 31 * result + pulse.hashCode()
+            result = 31 * result + delay.hashCode()
+            result = 31 * result + fade.hashCode()
+            result = 31 * result + easing.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Rim(" +
+                "width=$width" +
+                ", " +
+                "opacity=$opacity" +
+                ", " +
+                "unevenness=$unevenness" +
+                ", " +
+                "softness=$softness" +
+                ", " +
+                "pulse=$pulse" +
+                ", " +
+                "delay=$delay" +
+                ", " +
+                "fade=$fade" +
+                ", " +
+                "easing=$easing" +
+                ")"
+    }
+
+    /** A thin bright line right on the edge, wiped away after the [Rim]. */
+    @Immutable
+    public class Hairline(
+        /** Width of the line. 0 draws none. */
+        public val width: Float = 1.5f,
+        /** Opacity of the line, 0–1. */
+        public val opacity: Float = 0.9f,
+        /** How far the line whitens where the pulse's light runs, 0–1. */
+        public val white: Float = 0.95f,
+        /** Seconds the line holds on after the rim's wipe has started. */
+        public val delay: Float = 0.47f,
+        /** Seconds the line takes to be wiped away. */
+        public val fade: Float = 3f,
+    ) {
+        /** A copy with the given values changed. */
+        public fun copy(
+            width: Float = this.width,
+            opacity: Float = this.opacity,
+            white: Float = this.white,
+            delay: Float = this.delay,
+            fade: Float = this.fade,
+        ): Hairline =
+            Hairline(
+                width = width,
+                opacity = opacity,
+                white = white,
+                delay = delay,
+                fade = fade,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Hairline) return false
+            return width == other.width &&
+                opacity == other.opacity &&
+                white == other.white &&
+                delay == other.delay &&
+                fade == other.fade
+        }
+
+        override fun hashCode(): Int {
+            var result = width.hashCode()
+            result = 31 * result + opacity.hashCode()
+            result = 31 * result + white.hashCode()
+            result = 31 * result + delay.hashCode()
+            result = 31 * result + fade.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Hairline(" +
+                "width=$width" +
+                ", " +
+                "opacity=$opacity" +
+                ", " +
+                "white=$white" +
+                ", " +
+                "delay=$delay" +
+                ", " +
+                "fade=$fade" +
+                ")"
+    }
+
+    /** The tiny white dots the wave carries. */
+    @Immutable
+    public class Particles(
+        /** How many dots. 0 draws none. */
+        public val count: Int = 64,
+        /** Diameter of the largest dot. */
+        public val size: Float = 1.8f,
+        /** How far from the source the farthest dot is born in the wind-up. */
+        public val reach: Float = 150f,
+        /** How far each dot flies toward the source in one hop. */
+        public val flight: Float = 30f,
+        /** How close to the source a dot comes before it has faded. */
+        public val gap: Float = 24f,
+        /** Seconds after the launch by which the last dot has faded out. */
+        public val life: Float = 2.19f,
+        /** How far the dots are thrown, as a share of the front's way, 0–1. */
+        public val spread: Float = 1f,
+    ) {
+        init {
+            require(count >= 0) { "count must not be negative, was $count." }
+        }
+
+        /** A copy with the given values changed. */
+        public fun copy(
+            count: Int = this.count,
+            size: Float = this.size,
+            reach: Float = this.reach,
+            flight: Float = this.flight,
+            gap: Float = this.gap,
+            life: Float = this.life,
+            spread: Float = this.spread,
+        ): Particles =
+            Particles(
+                count = count,
+                size = size,
+                reach = reach,
+                flight = flight,
+                gap = gap,
+                life = life,
+                spread = spread,
+            )
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Particles) return false
+            return count == other.count &&
+                size == other.size &&
+                reach == other.reach &&
+                flight == other.flight &&
+                gap == other.gap &&
+                life == other.life &&
+                spread == other.spread
+        }
+
+        override fun hashCode(): Int {
+            var result = count.hashCode()
+            result = 31 * result + size.hashCode()
+            result = 31 * result + reach.hashCode()
+            result = 31 * result + flight.hashCode()
+            result = 31 * result + gap.hashCode()
+            result = 31 * result + life.hashCode()
+            result = 31 * result + spread.hashCode()
+            return result
+        }
+
+        override fun toString(): String =
+            "Particles(" +
+                "count=$count" +
+                ", " +
+                "size=$size" +
+                ", " +
+                "reach=$reach" +
+                ", " +
+                "flight=$flight" +
+                ", " +
+                "gap=$gap" +
+                ", " +
+                "life=$life" +
+                ", " +
+                "spread=$spread" +
+                ")"
+    }
 
     public companion object {
         /** Up the screen from a button at the bottom. */
         public val Vertical: DistortionWaveStyle = DistortionWaveStyle()
 
-        /** Across the screen from a tall source at the left. */
+        /** Across the screen from a tall source at the start edge. */
         public val Horizontal: DistortionWaveStyle =
             DistortionWaveStyle(type = DistortionWaveType.Horizontal)
 
-        /**
-         * Out from an avatar or icon, round a sheet or card about 500dp tall: a slower ring in
-         * greens, softer colour, no chromatic aberration.
-         */
+        /** A ring out from a round source, with the same look as the other two. */
         public val Center: DistortionWaveStyle =
+            DistortionWaveStyle(type = DistortionWaveType.Center)
+
+        /**
+         * A success: out from an avatar or icon, round a sheet or card about 500dp tall with 48dp
+         * corners. A slower ring in greens, softer colour, no chromatic aberration and no wind-up
+         * glow.
+         */
+        public val Success: DistortionWaveStyle =
             DistortionWaveStyle(
                 type = DistortionWaveType.Center,
-                anticipation = 0.25f,
                 travel = 3.43f,
-                rimFade = 2.51f,
-                hairlineLinger = 0.96f,
-                strength = 0.6f,
-                rimStrength = 0.6f,
-                aberration = 0f,
-                gatherGlow = 0f,
-                gatherDots = 0f,
-                particleCount = 89,
-                particleLife = 3.93f,
-                particleSpread = 0.64f,
+                cornerRadius = 48.dp,
+                anticipation =
+                    Anticipation(
+                        duration = 0.25f,
+                        pull = 14.4f,
+                        inhale = 33.6f,
+                        glow = 0f,
+                        dots = 0f,
+                    ),
+                lens = Lens(amplitude = 20.4f, width = 90f, aberration = 0f, bend = 13.2f),
+                blur = Blur(radius = 10.8f, ahead = 54f, behind = 144f),
+                band = Band(lead = 78f, tail = 180f, opacity = 0.6f),
+                rim = Rim(opacity = 0.6f, softness = 205.8f, fade = 2.51f),
+                hairline = Hairline(delay = 0.96f),
+                particles =
+                    Particles(
+                        count = 89,
+                        life = 3.93f,
+                        spread = 0.64f,
+                        reach = 90f,
+                        flight = 18f,
+                        gap = 11f,
+                    ),
                 palette = DistortionWavePalette.Green,
-                cornerRadius = 48f,
-                pull = 14.4f,
-                inhale = 33.6f,
-                amplitude = 20.4f,
-                lensWidth = 90f,
-                swell = 13.2f,
-                blur = 10.8f,
-                blurAhead = 54f,
-                blurBehind = 144f,
-                lead = 78f,
-                tail = 180f,
-                rimSoftness = 205.8f,
-                particleReach = 90f,
-                particleFlight = 18f,
-                particleGap = 11f,
             )
     }
 }
@@ -539,7 +821,7 @@ public class DistortionWavePalette(
                 behind = rgb(90, 190, 255),
             )
 
-        /** Greens, for a success. The [DistortionWaveStyle.Center] preset uses it. */
+        /** Greens, for a success. The [DistortionWaveStyle.Success] preset uses it. */
         public val Green: DistortionWavePalette =
             DistortionWavePalette(
                 colors =
@@ -640,11 +922,17 @@ private fun Color.oklab(): FloatArray {
 
 /** The same wave without the colour it leaves on the edges, and without their hairline. */
 public fun DistortionWaveStyle.withoutRim(): DistortionWaveStyle =
-    copy(rimStrength = 0f, hairlineWidth = 0f)
+    copy(rim = rim.copy(opacity = 0f), hairline = hairline.copy(width = 0f))
 
 /** The same wave without its dots. */
-public fun DistortionWaveStyle.withoutParticles(): DistortionWaveStyle = copy(particleCount = 0)
+public fun DistortionWaveStyle.withoutParticles(): DistortionWaveStyle =
+    copy(particles = particles.copy(count = 0))
 
-/** The same wave without colour: only the swell, the blur and the dots. */
+/** The same wave without colour: only the lens, the blur and the dots. */
 public fun DistortionWaveStyle.withoutColor(): DistortionWaveStyle =
-    copy(strength = 0f, rimStrength = 0f, hairlineWidth = 0f, gatherGlow = 0f)
+    copy(
+        band = band.copy(opacity = 0f),
+        rim = rim.copy(opacity = 0f),
+        hairline = hairline.copy(width = 0f),
+        anticipation = anticipation.copy(glow = 0f),
+    )

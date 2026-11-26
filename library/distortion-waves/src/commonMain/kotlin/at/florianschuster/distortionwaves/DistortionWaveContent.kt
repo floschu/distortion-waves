@@ -1,10 +1,9 @@
 package at.florianschuster.distortionwaves
 
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.movableContentWithReceiverOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -13,8 +12,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -28,14 +25,17 @@ import kotlinx.coroutines.flow.collectLatest
  * [content] an opaque background, as with [DistortionWave].
  *
  * [targetState] is compared with `equals`. The view for the new state is composed when the wave
- * starts. When the wave has gone, the view for the old state leaves the composition and the new
- * state's view is composed again in its place, so hoist any state that has to outlive the wave.
+ * starts and keeps what it remembers when the wave has gone. The view for the old state then leaves
+ * the composition.
  *
  * @param source the frame the wave opens from, in this composable's own coordinates, in pixels.
- *   Without one, a point on the edge the wave's type starts from.
- * @param focus where the source was touched, in the same coordinates.
- * @param reducedMotion whether the wave gives way to a crossfade. By default, when the system asks
- *   for less motion.
+ *   Without one, the element marked with [DistortionWaveScope.distortionWaveSource], and without
+ *   that either, a point on the edge the wave's type starts from.
+ * @param focus where the source was touched, in the same coordinates. Without one, the last press
+ *   on the marked element.
+ * @param motion whether the wave gives way to a crossfade. By default, when the system asks for
+ *   less motion.
+ * @param onFinish called with the state on show when a wave has gone, or has been pulled back.
  * @param overlay stays above the wave, sharp and live: the place for the control that changes the
  *   state.
  * @param content the view for a state. It is called for two states at once while the wave runs.
@@ -47,41 +47,57 @@ public fun <T> DistortionWaveContent(
     style: DistortionWaveStyle = DistortionWaveStyle.Center,
     source: Rect? = null,
     focus: Offset? = null,
-    reducedMotion: ReducedMotion = ReducedMotion.System,
-    overlay: (@Composable BoxScope.() -> Unit)? = null,
-    content: @Composable BoxScope.(state: T) -> Unit,
+    motion: DistortionWaveMotion = DistortionWaveMotion.System,
+    onFinish: (state: T) -> Unit = {},
+    overlay: (@Composable DistortionWaveScope.() -> Unit)? = null,
+    content: @Composable DistortionWaveScope.(state: T) -> Unit,
 ) {
     val state = remember { DistortionWaveState() }
     var shown by remember { mutableStateOf(targetState) }
     var incoming by remember { mutableStateOf(targetState) }
-    var container by remember { mutableStateOf(Offset.Zero) }
     val currentTarget by rememberUpdatedState(targetState)
     val currentFocus by rememberUpdatedState(focus)
+    val currentOnFinish by rememberUpdatedState(onFinish)
+    val currentContent by rememberUpdatedState(content)
+
+    // One movable view per state on screen. When the wave has gone, the new
+    // state's view moves from the revealed side to the resting side with
+    // everything it remembers.
+    val views = remember { mutableMapOf<T, @Composable DistortionWaveScope.() -> Unit>() }
+    views.keys.retainAll { it == shown || it == incoming }
+    val view: (T) -> @Composable DistortionWaveScope.() -> Unit = { of ->
+        views.getOrPut(of) {
+            movableContentWithReceiverOf<DistortionWaveScope> { currentContent(of) }
+        }
+    }
 
     LaunchedEffect(state) {
         snapshotFlow { currentTarget }
             .collectLatest { target ->
                 if (target == shown) {
+                    val wasOut = state.progress > 0f
                     state.collapse()
                     incoming = target
+                    if (wasOut) currentOnFinish(target)
                     return@collectLatest
                 }
                 incoming = target
-                state.reveal(currentFocus?.let { it + container })
+                state.reveal(currentFocus)
                 shown = target
                 state.snapTo(revealed = false)
+                currentOnFinish(target)
             }
     }
 
     DistortionWave(
         state = state,
-        modifier = modifier.onGloballyPositioned { container = it.positionInRoot() },
+        modifier = modifier,
         style = style,
         source = source,
-        reducedMotion = reducedMotion,
+        motion = motion,
         overlay = overlay,
         // At rest there is one view, not two of the same state.
-        revealedContent = { if (incoming != shown) key(incoming) { content(incoming) } },
-        content = { key(shown) { content(shown) } },
+        revealedContent = { if (incoming != shown) view(incoming)() },
+        content = { view(shown)() },
     )
 }

@@ -36,6 +36,9 @@ class DistortionWaveRenderTest {
 
     @Test fun center() = render("center", DistortionWaveStyle.Center, Rect(329f, 300f, 457f, 428f))
 
+    @Test
+    fun success() = render("success", DistortionWaveStyle.Success, Rect(329f, 300f, 457f, 428f))
+
     private fun render(
         name: String,
         style: DistortionWaveStyle,
@@ -47,7 +50,7 @@ class DistortionWaveRenderTest {
                     state = state,
                     style = style,
                     source = source,
-                    reducedMotion = ReducedMotion.Never,
+                    motion = DistortionWaveMotion.Full,
                     modifier = Modifier.fillMaxSize(),
                     revealedContent = { Screen(Color(0xFF0D1B12), "Sent") },
                     content = { Screen(Color(0xFF0D0D0D), "Review transfer") },

@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import at.florianschuster.distortionwaves.DistortionWave
 import at.florianschuster.distortionwaves.DistortionWavePalette
 import at.florianschuster.distortionwaves.DistortionWaveStyle
-import at.florianschuster.distortionwaves.distortionWaveSource
 import at.florianschuster.distortionwaves.rememberDistortionWaveState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,7 +66,7 @@ internal fun SendMoneyDemo() {
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(Margin)
                     .fillMaxWidth()
-                    .distortionWaveSource(state),
+                    .distortionWaveSource(),
             ) {
                 scope.launch { state.toggle() }
             }
@@ -125,7 +124,7 @@ internal fun SendMoneyDemo() {
 }
 
 /**
- * Center, green: a ring spreads from the token inside a card while the token itself, held sharp at
+ * Success, green: a ring spreads from the token inside a card while the token itself, held sharp at
  * the ring's centre, turns into the check.
  */
 @Composable
@@ -144,7 +143,7 @@ internal fun PaymentDemo() {
         DistortionWave(
             state = state,
             modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).fillMaxWidth().card(),
-            style = DistortionWaveStyle.Center.copy(cornerRadius = CardCorner),
+            style = DistortionWaveStyle.Success.copy(cornerRadius = CardCorner),
             revealedContent = {
                 Sheet(paid = true, label = "Done", enabled = true) {
                     scope.launch { state.toggle() }
@@ -155,7 +154,7 @@ internal fun PaymentDemo() {
                     paid = false,
                     label = if (processing) "Processing…" else "Pay",
                     enabled = !processing,
-                    badge = Modifier.distortionWaveSource(state),
+                    badge = Modifier.distortionWaveSource(),
                 ) {
                     scope.launch {
                         // Mid-wave, both buttons turn the wave around.
