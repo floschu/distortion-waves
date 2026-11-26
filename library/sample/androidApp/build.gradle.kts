@@ -16,7 +16,8 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "0.1.0"
+        // The library's version: the release tag without its v, or "local" on any other build.
+        versionName = System.getenv("libraryVersionTag") ?: "local"
     }
     buildTypes {
         // The build to judge the wave by: R8 shrinks and optimises it, as it
