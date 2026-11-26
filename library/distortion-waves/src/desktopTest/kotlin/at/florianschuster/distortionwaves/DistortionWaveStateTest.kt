@@ -254,7 +254,10 @@ class DistortionWaveStateTest {
             scope = rememberCoroutineScope()
             DistortionWave(
                 state = state,
-                modifier = Modifier.size(200.dp),
+                modifier = Modifier.size(100.dp),
+                // Every frame draws the shaders in software. At speed 1 that took most of the
+                // test's 60 second limit, and more than that on a slow machine.
+                style = DistortionWaveStyle.Vertical.copy(speed = 4f),
                 motion = DistortionWaveMotion.Full,
                 revealedContent = { BasicText("After") },
                 content = { BasicText("Before") },
