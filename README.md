@@ -31,6 +31,8 @@ dependencies {
 }
 ```
 
+Runs on Android, iOS, desktop and Wasm. On Android the wave needs Android 13. Below that, and when the system asks for less motion, it is a crossfade.
+
 ## usage
 
 ``` kotlin
