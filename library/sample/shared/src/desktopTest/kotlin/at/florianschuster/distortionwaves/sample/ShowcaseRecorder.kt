@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
@@ -53,7 +52,6 @@ import org.jetbrains.skia.Image
  * the frames.
  */
 class ShowcaseRecorder {
-    @OptIn(ExperimentalTestApi::class)
     @Test
     fun record() {
         if (System.getProperty("showcase") == null) return
@@ -76,7 +74,6 @@ class ShowcaseRecorder {
 
     private var failure: Throwable? = null
 
-    @OptIn(ExperimentalTestApi::class)
     private fun recordFrames(out: File) {
         runDesktopComposeUiTest(
             width = (CanvasWidth * Scale).toInt(),

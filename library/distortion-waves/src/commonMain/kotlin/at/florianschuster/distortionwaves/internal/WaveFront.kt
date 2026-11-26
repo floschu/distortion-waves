@@ -30,6 +30,8 @@ internal class WaveFront(
     size: Size,
     style: DistortionWaveStyle,
     focus: Offset?,
+    /** True for a horizontal wave in a right-to-left layout: it travels right to left. */
+    val mirrored: Boolean = false,
 ) {
     val width = size.width
     val height = size.height
@@ -88,18 +90,20 @@ internal class WaveFront(
 
     init {
         val t = progress.coerceIn(0f, 1f) * style.timeline
-        val sinceLaunch = t - style.anticipation
-        val gathered = smooth(0f, max(style.anticipation, 0.001f), t)
+        val sinceLaunch = t - style.anticipation.duration
+        val gathered = smooth(0f, max(style.anticipation.duration, 0.001f), t)
         val x = (sinceLaunch / style.travel).coerceIn(0f, 1f)
-        moved = style.easing.clamped(x)
+        moved = style.travelEasing.clamped(x)
 
         val fullSquash = if (ring) 1f else ARC_SQUASH
         val startRadius = min(source.width, source.height) / 2f
         // The source's long side, along which the front starts as a pill.
         val length = if (sideways) source.height else source.width
         val startSpine = if (ring) 0f else max(0f, length / 2f - startRadius)
-        // The horizontal wave is the vertical one turned a quarter.
-        val turned = if (sideways) (PI / 2).toFloat() else 0f
+        // The horizontal wave is the vertical one turned a quarter: clockwise
+        // to travel right, the other way to travel left.
+        val quarter = (PI / 2).toFloat()
+        val turned = if (!sideways) 0f else if (mirrored) -quarter else quarter
         val axisX = cos(turned)
         val axisY = sin(turned)
 
@@ -110,10 +114,11 @@ internal class WaveFront(
                 0f
             } else {
                 val off = if (sideways) focus.y - source.center.y else focus.x - source.center.x
-                (off / max(length / 2f, 1f)).coerceIn(-1f, 1f)
+                // Turned the other way, the same touch leans the frame the other way.
+                (off / max(length / 2f, 1f)).coerceIn(-1f, 1f) * (if (mirrored) -1f else 1f)
             }
-        val fullShift = lean * length / 2f * style.orientation
-        val fullLean = lean * style.orientation * MAX_TILT
+        val fullShift = lean * length / 2f * style.lean
+        val fullLean = lean * style.lean * MAX_TILT
         val fullTilt = turned + fullLean
         val opening = smooth(0f, 0.45f, moved)
 
@@ -130,7 +135,7 @@ internal class WaveFront(
             }
         }
         // …and has taken the outgoing side with it.
-        val crossed = reach + (style.swell + COVER_ZONE) * fullSquash
+        val crossed = reach + (style.lens.bend + COVER_ZONE) * fullSquash
         val settling = 1f - smooth(SETTLE_START, SETTLE_END, x)
 
         // The lean turns in over the first tenth of the move.
@@ -145,40 +150,40 @@ internal class WaveFront(
         val launchRadius = startRadius + max(style.launchGap, 0f)
         radius =
             if (sinceLaunch < 0f) {
-                launchRadius + style.inhale * (1f - gathered)
+                launchRadius + style.anticipation.inhale * (1f - gathered)
             } else {
                 launchRadius + (crossed + OVERSHOOT - launchRadius) * moved
             }
         squash = 1f + (fullSquash - 1f) * smooth(0f, 0.5f, moved)
         time = t
         energy = smooth(0f, 0.05f, x) * settling
-        swell = style.swell * smooth(0f, 0.3f, moved)
-        gravity = style.pull * gathered * (1f - smooth(0f, RELEASE, sinceLaunch))
+        swell = style.lens.bend * smooth(0f, 0.3f, moved)
+        gravity = style.anticipation.pull * gathered * (1f - smooth(0f, RELEASE, sinceLaunch))
         // From what has gathered on the source, so nothing pops at the launch.
-        val gatheredGlow = min(GATHERED_GLOW * max(style.gatherGlow, 0f), 1f)
+        val gatheredGlow = min(GATHERED_GLOW * max(style.anticipation.glow, 0f), 1f)
         glow =
             if (sinceLaunch < 0f) {
                 gatheredGlow * gathered
             } else {
                 (gatheredGlow + (1f - gatheredGlow) * smooth(0f, 0.07f, x)) * settling
             }
-        val clearStart = startRadius - style.rimSoftness
-        val clearEnd = reach + (style.rimSoftness + style.swell) * fullSquash
+        val clearStart = startRadius - style.rim.softness
+        val clearEnd = reach + (style.rim.softness + style.lens.bend) * fullSquash
         clearRadius =
             clearStart +
                 (clearEnd - clearStart) *
-                    style.rimEasing.clamped(
-                        (sinceLaunch - style.linger) / max(style.rimFade, 0.01f),
+                    style.rim.easing.clamped(
+                        (sinceLaunch - style.rim.delay) / max(style.rim.fade, 0.01f),
                     )
         hairClearRadius =
             clearStart +
                 (clearEnd - clearStart) *
-                    style.rimEasing.clamped(
-                        (sinceLaunch - style.linger - style.hairlineLinger) /
-                            max(style.hairlineFade, 0.01f),
+                    style.rim.easing.clamped(
+                        (sinceLaunch - style.rim.delay - style.hairline.delay) /
+                            max(style.hairline.fade, 0.01f),
                     )
-        rim = style.rimStrength * smooth(0f, 0.1f, x) * (1f - smooth(0.9f, 1f, t / style.timeline))
-        sparkle = smooth(0f, max(style.anticipation, 0.001f) * 0.35f, t)
+        rim = style.rim.opacity * smooth(0f, 0.1f, x) * (1f - smooth(0.9f, 1f, t / style.timeline))
+        sparkle = smooth(0f, max(style.anticipation.duration, 0.001f) * 0.35f, t)
         flying = max(sinceLaunch, 0f)
         launched = sinceLaunch > 0f
         hasCleared = radius > crossed

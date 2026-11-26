@@ -3,7 +3,11 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ktfmt)
 }
+
+// The Kotlin coding conventions, as kotlinlang.org writes them.
+ktfmt { kotlinLangStyle() }
 
 kotlin {
     android {
@@ -26,7 +30,9 @@ kotlin {
             api(libs.compose.foundation)
             api(libs.compose.ui)
         }
-        val desktopTest by getting {
+        named("desktopTest") {
+            // The Compose UI test entry points are experimental.
+            languageSettings.optIn("androidx.compose.ui.test.ExperimentalTestApi")
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.compose.ui.test)
@@ -37,15 +43,16 @@ kotlin {
 }
 
 // ./gradlew :sample:shared:desktopTest -Pshowcase records the frames for media/showcase.sh.
+val showcase = providers.gradleProperty("showcase")
+val showcaseSeconds = providers.gradleProperty("showcaseSeconds")
+
 tasks.withType<Test>().configureEach {
-    if (project.hasProperty("showcase")) {
+    if (showcase.isPresent) {
         systemProperty(
             "showcase",
             layout.buildDirectory.dir("showcase").get().asFile.path,
         )
-        (project.findProperty("showcaseSeconds") as String?)?.let {
-            systemProperty("showcaseSeconds", it)
-        }
+        showcaseSeconds.orNull?.let { systemProperty("showcaseSeconds", it) }
         maxHeapSize = "4g"
         outputs.upToDateWhen { false }
     }

@@ -15,10 +15,19 @@ internal actual val wavesSupported: Boolean = true
 
 internal actual fun createWaveShader(source: String): WaveShader = SkslShader(source)
 
+/**
+ * The compiled effects, one for each shader source. Every wave on screen shares them, so only the
+ * first wave pays for the compiling. Compose draws on one thread, so a plain map will do.
+ */
+private val effects = mutableMapOf<String, RuntimeEffect>()
+
+private fun effectFor(source: String): RuntimeEffect =
+    effects.getOrPut(source) { RuntimeEffect.makeForShader(source) }
+
 private class SkslShader(
     source: String,
 ) : WaveShader {
-    val builder = RuntimeShaderBuilder(RuntimeEffect.makeForShader(source))
+    val builder = RuntimeShaderBuilder(effectFor(source))
 
     override fun set(
         name: String,

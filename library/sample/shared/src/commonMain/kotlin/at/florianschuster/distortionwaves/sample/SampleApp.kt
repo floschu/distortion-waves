@@ -93,7 +93,7 @@ private fun Tabs(
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
             )
-            .padding(Margin),
+            .padding(start = Margin, top = TopBarTop, end = Margin, bottom = Margin),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         RepoLink()
@@ -181,8 +181,11 @@ internal fun DemoPage(demo: Demo) {
 
 private val LogoHeight = 32.dp
 
+/** Above the logo. The logo row is taller than its text, so it needs little room of its own. */
+private val TopBarTop = 4.dp
+
 /** The tab row: 8 dp around 13 sp text, inside 4 dp of padding. */
 private val TabsHeight = 42.dp
 
 /** Space for the logo and the tabs at the top of a page. */
-internal val TopBar = Margin * 2 + LogoHeight + Gap + TabsHeight
+internal val TopBar = TopBarTop + LogoHeight + Gap + TabsHeight + Margin

@@ -1,13 +1,16 @@
 package at.florianschuster.distortionwaves
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -20,6 +23,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.toSize
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.job
 
 /**
  * Drives a [DistortionWave] by hand: send the wave out with [reveal], collapse it with [collapse],
@@ -28,7 +34,7 @@ import androidx.compose.ui.unit.toSize
  * Read [progress] or [elapsed] while drawing to change your own content in step with the wave.
  *
  * In a composable, create it with [rememberDistortionWaveState]. Use one state for one
- * [DistortionWave].
+ * [DistortionWave], and call it from the main thread.
  *
  * @param initiallyRevealed true to start on the revealed content.
  */
@@ -36,22 +42,26 @@ import androidx.compose.ui.unit.toSize
 public class DistortionWaveState(
     initiallyRevealed: Boolean = false,
 ) {
-    private val animatable = Animatable(if (initiallyRevealed) 1f else 0f)
+    private var value by mutableFloatStateOf(if (initiallyRevealed) 1f else 0f)
+    private var target by mutableFloatStateOf(if (initiallyRevealed) 1f else 0f)
+
+    /** The call that is moving the wave now. */
+    private var run by mutableStateOf<Job?>(null)
 
     /** How far through its life the wave is, 0–1. 0 shows the content, 1 the revealed content. */
     public val progress: Float
-        get() = animatable.value
+        get() = value
 
     /** True while the wave is moving, out or back. */
     public val isRunning: Boolean
-        get() = animatable.isRunning
+        get() = run != null
 
     /**
      * True once [reveal] is called, until [collapse] is called. While the wave runs, this is the
      * side it is headed to.
      */
     public val revealed: Boolean
-        get() = animatable.targetValue == 1f
+        get() = target == 1f
 
     /** Seconds the whole wave takes with the current style. */
     public val duration: Float
@@ -66,13 +76,16 @@ public class DistortionWaveState(
      * pulled toward the source.
      */
     public val launchTime: Float
-        get() = style.anticipation / style.speed
+        get() = style.anticipation.duration / style.speed
 
     internal var style by mutableStateOf(DistortionWaveStyle.Vertical)
     internal var plain by mutableStateOf(false)
 
-    /** The touch the current wave leans with, in root coordinates. */
-    internal var focusInRoot by mutableStateOf<Offset?>(null)
+    /** Where the wave is on screen, in root coordinates. */
+    internal var positionInRoot by mutableStateOf(Offset.Zero)
+
+    /** The touch the current wave leans with, in the wave's own coordinates. */
+    internal var focus by mutableStateOf<Offset?>(null)
     internal var sourceInRoot by mutableStateOf<Rect?>(null)
     private var lastPressInRoot: Offset? = null
 
@@ -81,21 +94,16 @@ public class DistortionWaveState(
      * the revealed content is already showing. While the wave collapses, it turns around and runs
      * out again from where it is.
      *
-     * @param focus where the source was touched, in root coordinates. Without one, the last press
-     *   on the element marked with [distortionWaveSource].
+     * @param focus where the source was touched, in the [DistortionWave]'s own coordinates, in
+     *   pixels, as its `source` is. Without one, the last press on the element marked with
+     *   `distortionWaveSource`.
      */
     public suspend fun reveal(focus: Offset? = null) {
-        if (animatable.value == 1f) return
-        if (animatable.value == 0f) focusInRoot = focus ?: lastPressInRoot
+        if (value == 1f) return
+        if (value == 0f) this.focus = focus ?: lastPressInRoot?.minus(positionInRoot)
         // Only the part of the wave that is left, so a turn mid-wave keeps its pace.
-        val left = 1f - animatable.value
-        animatable.animateTo(
-            1f,
-            tween(
-                ((if (plain) PLAIN_SECONDS else style.duration) * left).millis(),
-                easing = LinearEasing,
-            ),
-        )
+        val left = 1f - value
+        animateTo(1f, (if (plain) PLAIN_SECONDS else style.duration) * left, LinearEasing)
     }
 
     /**
@@ -103,25 +111,18 @@ public class DistortionWaveState(
      * turns around from where it is.
      */
     public suspend fun collapse() {
-        if (animatable.value == 0f) return
-        val from = animatable.value
-        val spec =
-            when {
-                plain -> tween<Float>((PLAIN_SECONDS * from).millis(), easing = LinearEasing)
-                // From the revealed side, on the wave's own easing. It is quick
-                // through the end of the wave's life, where little is on screen,
-                // so the collapse answers the tap at once.
-                from == 1f ->
-                    tween((style.duration / style.returnSpeed).millis(), easing = style.easing)
-                // Mid-wave, straight back at the return speed, so the wave
-                // reverses without a jump in pace.
-                else ->
-                    tween(
-                        (style.duration / style.returnSpeed * from).millis(),
-                        easing = LinearEasing,
-                    )
-            }
-        animatable.animateTo(0f, spec)
+        if (value == 0f) return
+        val from = value
+        when {
+            plain -> animateTo(0f, PLAIN_SECONDS * from, LinearEasing)
+            // From the revealed side, on the wave's own easing. It is quick
+            // through the end of the wave's life, where little is on screen,
+            // so the collapse answers the tap at once.
+            from == 1f -> animateTo(0f, style.duration / style.returnSpeed, style.travelEasing)
+            // Mid-wave, straight back at the return speed, so the wave
+            // reverses without a jump in pace.
+            else -> animateTo(0f, style.duration / style.returnSpeed * from, LinearEasing)
+        }
     }
 
     /** Collapses the wave if it is revealed or on its way out, and reveals it otherwise. */
@@ -135,20 +136,56 @@ public class DistortionWaveState(
      * finished, the wave carries on from where it is.
      */
     public suspend fun play(focus: Offset? = null) {
-        animatable.snapTo(0f)
+        snapTo(revealed = false)
         reveal(focus)
         // Not in a finally block: a snap from a cancelled run would stop the call that took over.
-        animatable.snapTo(0f)
+        snapTo(revealed = false)
     }
 
-    /** Jumps to the content or to the revealed content, without a wave. */
-    public suspend fun snapTo(revealed: Boolean) {
-        animatable.snapTo(if (revealed) 1f else 0f)
+    /** Jumps to the content or to the revealed content, without a wave. Stops a running wave. */
+    public fun snapTo(revealed: Boolean) {
+        scrubTo(if (revealed) 1f else 0f)
     }
 
-    /** Holds the wave at `progress`, 0–1: for scrubbing, or a still frame. */
-    public suspend fun scrubTo(progress: Float) {
-        animatable.snapTo(progress.coerceIn(0f, 1f))
+    /** Holds the wave at `progress`, 0–1: for scrubbing, or a still frame. Stops a running wave. */
+    public fun scrubTo(progress: Float) {
+        run?.cancel()
+        run = null
+        value = progress.coerceIn(0f, 1f)
+        target = value
+    }
+
+    /**
+     * Moves the wave to [to]. A call that comes while another is moving the wave takes over from
+     * it: the other call ends with a cancellation, as it does with an `Animatable`.
+     */
+    private suspend fun animateTo(
+        to: Float,
+        seconds: Float,
+        easing: Easing,
+    ) {
+        target = to
+        coroutineScope {
+            val job = coroutineContext.job
+            val previous = run
+            run = job
+            previous?.cancel()
+            try {
+                animate(
+                    initialValue = value,
+                    targetValue = to,
+                    animationSpec = tween(seconds.millis(), easing = easing),
+                ) { now, _ ->
+                    value = now
+                }
+            } finally {
+                // Cut off with nobody taking over, the wave rests where it is.
+                if (run === job) {
+                    run = null
+                    target = value
+                }
+            }
+        }
     }
 
     internal fun pressed(at: Offset) {
@@ -177,8 +214,11 @@ public fun rememberDistortionWaveState(initiallyRevealed: Boolean = false): Dist
     rememberSaveable(saver = DistortionWaveState.Saver) { DistortionWaveState(initiallyRevealed) }
 
 /**
- * Marks the element the wave opens from: a button, an edge handle, an avatar. The wave follows it
- * as it moves, and leans toward where it was last pressed.
+ * Marks the element the wave of [state] opens from: a button, an edge handle, an avatar. The wave
+ * follows it as it moves, and leans toward where it was last pressed.
+ *
+ * Inside a [DistortionWave]'s own slots, [DistortionWaveScope.distortionWaveSource] does the same
+ * without a state. Use this one for an element that sits outside the wave.
  */
 public fun Modifier.distortionWaveSource(state: DistortionWaveState): Modifier =
     this.onGloballyPositioned { state.sourceInRoot = Rect(it.positionInRoot(), it.size.toSize()) }
@@ -189,3 +229,17 @@ public fun Modifier.distortionWaveSource(state: DistortionWaveState): Modifier =
                 state.sourceInRoot?.let { state.pressed(it.topLeft + down.position) }
             }
         }
+
+/**
+ * The scope of a [DistortionWave]'s slots: a `BoxScope` that also knows the wave, so an element in
+ * a slot can mark itself as the wave's source.
+ */
+@Stable
+public interface DistortionWaveScope : BoxScope {
+    /**
+     * Marks the element this wave opens from: a button, an edge handle, an avatar. The wave follows
+     * it as it moves, and leans toward where it was last pressed. Put it after the padding and size
+     * modifiers, so it reports the element's own bounds.
+     */
+    public fun Modifier.distortionWaveSource(): Modifier
+}

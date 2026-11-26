@@ -1,7 +1,11 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ktfmt)
 }
+
+// The Kotlin coding conventions, as kotlinlang.org writes them.
+ktfmt { kotlinLangStyle() }
 
 android {
     namespace = "at.florianschuster.distortionwaves.sample"

@@ -263,10 +263,10 @@ internal val Margin = 20.dp
 /** Space between neighbours: cards, controls, lines of text. */
 internal val Gap = 12.dp
 
-/** The corner radius of every card, in dp. The waves' cornerRadius takes it as a plain number. */
-internal const val CardCorner = 28f
+/** The corner radius of every card, and of the waves that fill one. */
+internal val CardCorner = 28.dp
 
-internal val CardShape = RoundedCornerShape(CardCorner.dp)
+internal val CardShape = RoundedCornerShape(CardCorner)
 
 /** The look every card shares: the card colour, the corners and a faint outline. */
 internal fun Modifier.card(): Modifier =

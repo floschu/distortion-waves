@@ -4,4 +4,7 @@
     <issue id="AndroidGradlePluginVersion" severity="ignore" />
     <issue id="NewerVersionAvailable" severity="ignore" />
     <issue id="GradleDependency" severity="ignore" />
+    <!-- Compose brings lifecycle-runtime 2.9.4 on Android. Its bundled lint checks
+         are too old for this lint version, so lint skips them anyway. -->
+    <issue id="ObsoleteLintCustomCheck" severity="ignore" />
 </lint>

@@ -19,11 +19,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.zIndex
 import at.florianschuster.distortionwaves.internal.BAND_SHADER
 import at.florianschuster.distortionwaves.internal.BLUR_MASK_SHADER
@@ -50,20 +54,21 @@ import at.florianschuster.distortionwaves.internal.wavesSupported
  * 13), and when the system asks for less motion, the wave is a crossfade.
  *
  * Both sides stay composed the whole time, so the wave starts without a hitch and each side keeps
- * its state. The side that is not on show is drawn transparent, takes no touches once the wave has
- * passed and is left out of the accessibility tree. Start work that belongs to the revealed side
- * from [onFinish] or from the event that flips [revealed], not from its composition.
+ * its state. The side that is not on show is not drawn, takes no touches and no keyboard focus, and
+ * is left out of the accessibility tree. Start work that belongs to the revealed side from
+ * [onFinish] or from the event that flips [revealed], not from its composition.
  *
  * @param revealed flip it to send the wave out, flip it back to collapse it. A flip mid-wave turns
  *   the wave around from where it is.
- * @param style how the wave looks and moves. Start from [DistortionWaveStyle.Vertical],
- *   [DistortionWaveStyle.Horizontal] or [DistortionWaveStyle.Center].
+ * @param style how the wave looks and moves. Start from a preset such as
+ *   [DistortionWaveStyle.Vertical].
  * @param source the frame the wave opens from, in this composable's own coordinates, in pixels.
- *   Without one, a point on the edge the wave's type starts from.
- * @param focus where the source was touched, in the same coordinates. The wave leans toward it as
- *   much as the style's `orientation` says.
- * @param reducedMotion whether the wave gives way to a crossfade. By default, when the system asks
- *   for less motion.
+ *   Without one, the element marked with [DistortionWaveScope.distortionWaveSource], and without
+ *   that either, a point on the edge the wave's type starts from.
+ * @param focus where the source was touched, in the same coordinates. Without one, the last press
+ *   on the marked element. The wave leans toward it as much as the style's `lean` says.
+ * @param motion whether the wave gives way to a crossfade. By default, when the system asks for
+ *   less motion.
  * @param onFinish called when the wave has left and the edges have cleared, or when it has
  *   collapsed back. Not called for a run that was turned back.
  * @param overlay stays above the wave, sharp and live, over both sides: the place for the button
@@ -78,30 +83,29 @@ public fun DistortionWave(
     style: DistortionWaveStyle = DistortionWaveStyle.Vertical,
     source: Rect? = null,
     focus: Offset? = null,
-    reducedMotion: ReducedMotion = ReducedMotion.System,
+    motion: DistortionWaveMotion = DistortionWaveMotion.System,
     onFinish: (revealed: Boolean) -> Unit = {},
-    overlay: (@Composable BoxScope.() -> Unit)? = null,
-    revealedContent: @Composable BoxScope.() -> Unit,
-    content: @Composable BoxScope.() -> Unit,
+    overlay: (@Composable DistortionWaveScope.() -> Unit)? = null,
+    revealedContent: @Composable DistortionWaveScope.() -> Unit,
+    content: @Composable DistortionWaveScope.() -> Unit,
 ) {
     // Not saved: after a restore, the caller's boolean says which side shows.
     val state = remember { DistortionWaveState(initiallyRevealed = revealed) }
     val currentOnFinish by rememberUpdatedState(onFinish)
     val currentFocus by rememberUpdatedState(focus)
-    var container by remember { mutableStateOf(Offset.Zero) }
 
     LaunchedEffect(revealed) {
         if (state.progress == (if (revealed) 1f else 0f)) return@LaunchedEffect
-        if (revealed) state.reveal(currentFocus?.let { it + container }) else state.collapse()
+        if (revealed) state.reveal(currentFocus) else state.collapse()
         currentOnFinish(revealed)
     }
 
     DistortionWave(
         state = state,
-        modifier = modifier.onGloballyPositioned { container = it.positionInRoot() },
+        modifier = modifier,
         style = style,
         source = source,
-        reducedMotion = reducedMotion,
+        motion = motion,
         overlay = overlay,
         revealedContent = revealedContent,
         content = content,
@@ -115,7 +119,7 @@ public fun DistortionWave(
  *
  * @param state create it with [rememberDistortionWaveState]. One state drives one wave.
  * @param source the frame the wave opens from, in this composable's own coordinates, in pixels.
- *   Without one, the element marked with [distortionWaveSource], and without that either, a point
+ *   Without one, the element marked with `distortionWaveSource`, and without that either, a point
  *   on the edge the wave's type starts from.
  */
 @Composable
@@ -124,17 +128,17 @@ public fun DistortionWave(
     modifier: Modifier = Modifier,
     style: DistortionWaveStyle = DistortionWaveStyle.Vertical,
     source: Rect? = null,
-    reducedMotion: ReducedMotion = ReducedMotion.System,
-    overlay: (@Composable BoxScope.() -> Unit)? = null,
-    revealedContent: @Composable BoxScope.() -> Unit,
-    content: @Composable BoxScope.() -> Unit,
+    motion: DistortionWaveMotion = DistortionWaveMotion.System,
+    overlay: (@Composable DistortionWaveScope.() -> Unit)? = null,
+    revealedContent: @Composable DistortionWaveScope.() -> Unit,
+    content: @Composable DistortionWaveScope.() -> Unit,
 ) {
     val plain =
         !wavesSupported ||
-            when (reducedMotion) {
-                ReducedMotion.System -> systemReducedMotion()
-                ReducedMotion.Always -> true
-                ReducedMotion.Never -> false
+            when (motion) {
+                DistortionWaveMotion.System -> systemReducedMotion()
+                DistortionWaveMotion.Reduced -> true
+                DistortionWaveMotion.Full -> false
             }
     SideEffect {
         state.style = style
@@ -148,29 +152,67 @@ public fun DistortionWave(
 
     // Both sides take on the size this composable is given at least, so a
     // view that wraps its content still fills a wave with a set size.
-    Box(modifier, propagateMinConstraints = true) {
+    Box(
+        modifier.onGloballyPositioned { state.positionInRoot = it.positionInRoot() },
+        propagateMinConstraints = true,
+    ) {
         if (plain) {
-            Box(
-                Modifier.hidden(atStart).graphicsLayer { alpha = state.progress },
-                propagateMinConstraints = true,
-                content = revealedContent,
+            WaveSlot(
+                state,
+                Modifier.placedUnless(atStart).graphicsLayer { alpha = state.progress },
+                revealedContent,
             )
-            Box(
-                Modifier.zIndex(if (atEnd) -1f else 0f).hidden(atEnd).graphicsLayer {
-                    alpha = 1f - state.progress
-                },
-                propagateMinConstraints = true,
-                content = content,
+            WaveSlot(
+                state,
+                Modifier.placedUnless(atEnd).graphicsLayer { alpha = 1f - state.progress },
+                content,
             )
         } else {
             WaveStage(state, atStart, atEnd, source, style, revealedContent, content)
         }
-        if (overlay != null) Box(Modifier.matchParentSize().zIndex(1f), content = overlay)
+        if (overlay != null) {
+            WaveSlot(state, Modifier.matchParentSize().zIndex(1f), overlay, fill = false)
+        }
     }
 }
 
-/** Keeps a side that cannot be seen out of the accessibility tree. */
-private fun Modifier.hidden(hidden: Boolean) = if (hidden) clearAndSetSemantics {} else this
+/** One of the wave's slots, with the scope that knows the wave. */
+@Composable
+private fun WaveSlot(
+    state: DistortionWaveState,
+    modifier: Modifier,
+    content: @Composable DistortionWaveScope.() -> Unit,
+    fill: Boolean = true,
+) {
+    Box(modifier, propagateMinConstraints = fill) {
+        val scope = remember(this, state) { WaveScope(this, state) }
+        scope.content()
+    }
+}
+
+/** Equal for the same wave, so content that moves from one slot to another is not redone. */
+private class WaveScope(
+    private val box: BoxScope,
+    private val state: DistortionWaveState,
+) : DistortionWaveScope, BoxScope by box {
+    override fun Modifier.distortionWaveSource(): Modifier = distortionWaveSource(state)
+
+    override fun equals(other: Any?): Boolean =
+        other is WaveScope && other.box == box && other.state === state
+
+    override fun hashCode(): Int = 31 * box.hashCode() + state.hashCode()
+}
+
+/**
+ * Takes a side that cannot be seen out of reach. It is still composed and measured, so it keeps its
+ * state and its size. It is not placed, so it is not drawn and cannot be touched or focused, and
+ * its semantics are cleared, so it is not in the accessibility tree.
+ */
+private fun Modifier.placedUnless(hidden: Boolean) =
+    (if (hidden) clearAndSetSemantics {} else this).layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { if (!hidden) placeable.place(0, 0) }
+    }
 
 /**
  * The transition at one progress. Everything on screen is derived from that one number, and it is
@@ -183,16 +225,20 @@ private fun BoxScope.WaveStage(
     atEnd: Boolean,
     source: Rect?,
     style: DistortionWaveStyle,
-    revealedContent: @Composable BoxScope.() -> Unit,
-    content: @Composable BoxScope.() -> Unit,
+    revealedContent: @Composable DistortionWaveScope.() -> Unit,
+    content: @Composable DistortionWaveScope.() -> Unit,
 ) {
     // Pixels in one of the style's points.
     val unit = LocalDensity.current.density * style.scale
+    // A horizontal wave starts at the start edge: the right one in a right-to-left layout.
+    val mirrored =
+        style.type == DistortionWaveType.Horizontal &&
+            LocalLayoutDirection.current == LayoutDirection.Rtl
     var size by remember { mutableStateOf(IntSize.Zero) }
-    var position by remember { mutableStateOf(Offset.Zero) }
     val currentSource by rememberUpdatedState(source)
     val currentStyle by rememberUpdatedState(style)
     val currentUnit by rememberUpdatedState(unit)
+    val currentMirrored by rememberUpdatedState(mirrored)
 
     val front by
         remember(state) {
@@ -200,14 +246,15 @@ private fun BoxScope.WaveStage(
                 val u = currentUnit
                 val s =
                     currentSource
-                        ?: state.sourceInRoot?.translate(-position)
-                        ?: defaultSource(currentStyle.type, size)
+                        ?: state.sourceInRoot?.translate(-state.positionInRoot)
+                        ?: defaultSource(currentStyle.type, size, currentMirrored)
                 WaveFront(
                     progress = state.progress,
                     source = Rect(s.left / u, s.top / u, s.right / u, s.bottom / u),
                     size = Size(size.width / u, size.height / u),
                     style = currentStyle,
-                    focus = state.focusInRoot?.let { (it - position) / u },
+                    focus = state.focus?.let { it / u },
+                    mirrored = currentMirrored,
                 )
             }
         }
@@ -215,16 +262,12 @@ private fun BoxScope.WaveStage(
     val incoming = remember { WaveSide(side = -1f) }
     val outgoing = remember { WaveSide(side = 1f) }
     val band = remember { WaveBand() }
-    val particles = remember(style) { List(style.particleCount) { WaveParticle(it, style) } }
+    val particles = remember(style) { List(style.particles.count) { WaveParticle(it, style) } }
 
-    Box(
-        Modifier.matchParentSize().onGloballyPositioned {
-            size = it.size
-            position = it.positionInRoot()
-        },
-    )
-    Box(
-        Modifier.hidden(atStart).graphicsLayer {
+    Box(Modifier.matchParentSize().onSizeChanged { size = it })
+    WaveSlot(
+        state,
+        Modifier.placedUnless(atStart).graphicsLayer {
             val f = front
             val acting = state.progress.let { it > 0f && it < 1f } && f.energy > 0f
             // This side's layer is set up while the wave gathers, when it
@@ -235,31 +278,26 @@ private fun BoxScope.WaveStage(
             renderEffect =
                 incoming.effect(f, style, unit, lens = acting || warming, blurred = acting)
         },
-        propagateMinConstraints = true,
-        content = revealedContent,
+        revealedContent,
     )
-    Box(
-        Modifier
-            // Out of the way of touches once the other side is all there is.
-            .zIndex(if (atEnd) -1f else 0f)
-            .hidden(atEnd)
-            .graphicsLayer {
-                val f = front
-                val live = state.progress.let { it > 0f && it < 1f }
-                val acting = live && f.energy > 0f
-                // Once the front has crossed, nothing of this side shows.
-                alpha = if (f.hasCleared) 0f else 1f
-                renderEffect =
-                    outgoing.effect(
-                        f,
-                        style,
-                        unit,
-                        lens = (acting || (live && f.gravity > 0f)) && !f.hasCleared,
-                        blurred = acting && !f.hasCleared,
-                    )
-            },
-        propagateMinConstraints = true,
-        content = content,
+    WaveSlot(
+        state,
+        Modifier.placedUnless(atEnd).graphicsLayer {
+            val f = front
+            val live = state.progress.let { it > 0f && it < 1f }
+            val acting = live && f.energy > 0f
+            // Once the front has crossed, nothing of this side shows.
+            alpha = if (f.hasCleared) 0f else 1f
+            renderEffect =
+                outgoing.effect(
+                    f,
+                    style,
+                    unit,
+                    lens = (acting || (live && f.gravity > 0f)) && !f.hasCleared,
+                    blurred = acting && !f.hasCleared,
+                )
+        },
+        content,
     )
     Canvas(Modifier.matchParentSize()) {
         val f = front
@@ -283,11 +321,13 @@ private fun BoxScope.WaveStage(
 private fun defaultSource(
     type: DistortionWaveType,
     size: IntSize,
+    mirrored: Boolean,
 ): Rect {
     val centre =
         when (type) {
             DistortionWaveType.Vertical -> Offset(size.width / 2f, size.height.toFloat())
-            DistortionWaveType.Horizontal -> Offset(0f, size.height / 2f)
+            DistortionWaveType.Horizontal ->
+                Offset(if (mirrored) size.width.toFloat() else 0f, size.height / 2f)
             DistortionWaveType.Center -> Offset(size.width / 2f, size.height / 2f)
         }
     return Rect(centre, 1f)
@@ -311,20 +351,21 @@ private class WaveSide(
         if (!lens) return null
         this.lens.apply {
             setField(front, unit)
-            set("amplitude", style.amplitude)
-            set("lensWidth", style.lensWidth)
-            set("aberration", style.aberration)
+            set("amplitude", style.lens.amplitude)
+            set("lensWidth", style.lens.width)
+            set("aberration", style.lens.aberration)
             set("side", side)
         }
         // The most blur anywhere on screen in this frame.
-        val peak = front.energy * style.blur
+        val blur = style.blur.radius
+        val peak = front.energy * blur
         if (!blurred || peak < MIN_BLUR) return waveSideEffect(this.lens, null, null, 0f, 0f)
-        val near = minOf(NEAR_BLUR, style.blur)
+        val near = minOf(NEAR_BLUR, blur)
         mask(nearMask, front, style, unit, from = 0f, to = near)
         // The second copy only takes over past the first one's blur.
         if (peak <= near) return waveSideEffect(this.lens, nearMask, null, near * unit, 0f)
-        mask(farMask, front, style, unit, from = near, to = style.blur)
-        return waveSideEffect(this.lens, nearMask, farMask, near * unit, style.blur * unit)
+        mask(farMask, front, style, unit, from = near, to = blur)
+        return waveSideEffect(this.lens, nearMask, farMask, near * unit, blur * unit)
     }
 
     private fun mask(
@@ -336,9 +377,9 @@ private class WaveSide(
         to: Float,
     ) {
         mask.setField(front, unit)
-        mask.set("blurRadius", style.blur)
-        mask.set("blurAhead", style.blurAhead)
-        mask.set("blurBehind", style.blurBehind)
+        mask.set("blurRadius", style.blur.radius)
+        mask.set("blurAhead", style.blur.ahead)
+        mask.set("blurBehind", style.blur.behind)
         mask.set("blurFrom", from)
         mask.set("blurTo", to)
     }
@@ -368,25 +409,25 @@ private class WaveBand {
         set("paletteCount", palette.colors.size.toFloat())
         set("warm", palette.aheadLab)
         set("cool", palette.behindLab)
-        set("lead", style.lead)
-        set("tail", style.tail)
-        set("strength", style.strength)
-        set("rimWidth", style.rimWidth)
-        set("rimSoftness", style.rimSoftness)
-        set("cornerRadius", style.cornerRadius)
-        set("unevenness", style.rimUnevenness)
-        set("pulse", style.rimPulse)
-        set("hairWidth", style.hairlineWidth)
-        set("hairOpacity", style.hairlineOpacity)
-        set("hairWhite", style.hairlineWhite)
+        set("lead", style.band.lead)
+        set("tail", style.band.tail)
+        set("strength", style.band.opacity)
+        set("rimWidth", style.rim.width)
+        set("rimSoftness", style.rim.softness)
+        set("cornerRadius", style.cornerRadiusPoints)
+        set("unevenness", style.rim.unevenness)
+        set("pulse", style.rim.pulse)
+        set("hairWidth", style.hairline.width)
+        set("hairOpacity", style.hairline.opacity)
+        set("hairWhite", style.hairline.white)
         set(
             "lumps",
             WaveRim.lumps(
                 front.time,
                 front.width,
                 front.height,
-                style.cornerRadius,
-                style.rimPulse,
+                style.cornerRadiusPoints,
+                style.rim.pulse,
                 lumps,
             ),
         )
